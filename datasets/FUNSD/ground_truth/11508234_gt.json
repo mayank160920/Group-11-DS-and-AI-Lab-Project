@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "MARKETING RESEARCH AUTHORIZATION",
+            "doc_b_value": "MARKETING RESEARCH APPROVAL FORM",
+            "normalized_value": "MARKETING RESEARCH AUTHORIZATION",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "1995-48D",
+            "doc_b_value": "1995-48E",
+            "normalized_value": "1995-48E",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "March 3, 1995",
+            "doc_b_value": "03/03/1995",
+            "normalized_value": "1995-03-03",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "29,500",
+            "doc_b_value": "29500.00",
+            "normalized_value": "29500",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Signature_Date",
+            "doc_a_value": "3/3/95",
+            "doc_b_value": "03/03/1995",
+            "normalized_value": "1995-03-03",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Threshold_Requirement",
+            "doc_a_value": "$100,000",
+            "doc_b_value": "$150,000",
+            "normalized_value": "150000",
+            "validation_type": "derived_value",
+            "formula": "Original_Threshold * 1.5",
+            "validation_result": "match"
+        }
+    ]
+}

@@ -1,0 +1,49 @@
+{
+    "entities": [
+        {
+            "entity_name": "Organization_Name",
+            "doc_a_value": "Lorillard Tobacco Company",
+            "doc_b_value": "Lorillard Tobacco Corp.",
+            "normalized_value": "Lorillard Tobacco Company",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "11/4/93",
+            "doc_b_value": "November 4, 1993",
+            "normalized_value": "1993-11-04",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Page_Count",
+            "doc_a_value": "3",
+            "doc_b_value": "5",
+            "normalized_value": "3",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Contact_Number",
+            "doc_a_value": "(405) 840-0639",
+            "doc_b_value": "405-840-0639",
+            "normalized_value": "+1-405-840-0639",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Recipient_Name",
+            "doc_a_value": "Mr. A. J. Giacoio",
+            "doc_b_value": "Mr. A. J. Giacoio",
+            "normalized_value": "A. J. Giacoio",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        }
+    ]
+}

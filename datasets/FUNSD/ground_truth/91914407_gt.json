@@ -1,0 +1,40 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "FACSIMILE COVER PAGE",
+            "doc_b_value": "FAX TRANSMISSION SHEET",
+            "normalized_value": "FACSIMILE COVER PAGE",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "6-29-94",
+            "doc_b_value": "June 29, 1994",
+            "normalized_value": "1994-06-29",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Page_Count",
+            "doc_a_value": "14",
+            "doc_b_value": "15",
+            "normalized_value": "15",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Recipient_Name",
+            "doc_a_value": "Mr. Al Giacoio",
+            "doc_b_value": "Al Giacoio",
+            "normalized_value": "Al Giacoio",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        }
+    ]
+}

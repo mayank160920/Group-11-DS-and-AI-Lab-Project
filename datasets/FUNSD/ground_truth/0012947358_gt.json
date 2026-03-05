@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "1-27-69",
+            "doc_b_value": "January 27, 1969",
+            "normalized_value": "1969-01-27",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "$5,000",
+            "doc_b_value": "$5,500",
+            "normalized_value": "5500",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Company_Address",
+            "doc_a_value": "245 Park Avenue, New York, New York 10017",
+            "doc_b_value": "245 Park Ave, NY, NY 10017",
+            "normalized_value": "245 Park Avenue, New York, NY 10017",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Signature_Date",
+            "doc_a_value": "1/29/69",
+            "doc_b_value": "01/29/1969",
+            "normalized_value": "1969-01-29",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Threshold_Requirement",
+            "doc_a_value": "20 days",
+            "doc_b_value": "20",
+            "normalized_value": "20",
+            "validation_type": "conditional",
+            "formula": "If days > 0 then valid",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "69-1351",
+            "doc_b_value": "REF-69-1351",
+            "normalized_value": "69-1351",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        }
+    ]
+}

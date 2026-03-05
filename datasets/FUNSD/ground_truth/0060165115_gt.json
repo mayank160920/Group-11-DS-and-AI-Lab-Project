@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "2463",
+            "doc_b_value": "REF-2463-X",
+            "normalized_value": "2463",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "28. Apr. 98",
+            "doc_b_value": "1998-04-28",
+            "normalized_value": "1998-04-28",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Page_Count",
+            "doc_a_value": "21",
+            "doc_b_value": "22",
+            "normalized_value": "22",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Contact_Number",
+            "doc_a_value": "0041-32-888 5776",
+            "doc_b_value": "+41 32 888 5776",
+            "normalized_value": "+41328885776",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Recipient_Name",
+            "doc_a_value": "Dr. Don Leyden",
+            "doc_b_value": "Dr. Donald Leyden",
+            "normalized_value": "Dr. Donald Leyden",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Threshold_Requirement",
+            "doc_a_value": "null",
+            "doc_b_value": "If pages > 20, include appendix",
+            "normalized_value": "pages > 20",
+            "validation_type": "conditional",
+            "formula": "IF(Total_Page_Count > 20, 'Include Appendix', 'Standard')",
+            "validation_result": "match"
+        }
+    ]
+}

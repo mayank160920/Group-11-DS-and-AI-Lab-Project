@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "INTERNATIONAL MARKETING RESEARCH CHANGE OF AUTHORIZED COST",
+            "doc_b_value": "INTERNATIONAL MARKETING RESEARCH AUTHORIZATION ADJUSTMENT FORM",
+            "normalized_value": "INTERNATIONAL MARKETING RESEARCH AUTHORIZATION ADJUSTMENT FORM",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "6/21/90",
+            "doc_b_value": "June 21, 1990",
+            "normalized_value": "1990-06-21",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "47,711.47",
+            "doc_b_value": "47711.47",
+            "normalized_value": "47711.47",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Percentage_Value",
+            "doc_a_value": "10%",
+            "doc_b_value": "12%",
+            "normalized_value": "0.12",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "27",
+            "doc_b_value": "28",
+            "normalized_value": "28",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "47,711.47",
+            "doc_b_value": "47711.47",
+            "normalized_value": "47711.47",
+            "validation_type": "formula_validation",
+            "formula": "43335.00 + 4376.47 = 47711.47",
+            "validation_result": "match"
+        }
+    ]
+}

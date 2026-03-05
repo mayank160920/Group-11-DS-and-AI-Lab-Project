@@ -1,0 +1,49 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "46TH TCRC REGISTRATION FORM",
+            "doc_b_value": "46th Tobacco Chemists' Research Conference Registration Form",
+            "normalized_value": "46th TCRC Registration Form",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "87682908",
+            "doc_b_value": "87682909",
+            "normalized_value": "87682909",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Rate_or_Price",
+            "doc_a_value": "$ 170.00",
+            "doc_b_value": "170.00 CAD",
+            "normalized_value": "170.00",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "N/A",
+            "doc_b_value": "210.00",
+            "normalized_value": "210.00",
+            "validation_type": "derived_value",
+            "formula": "170.00 + 40.00 = 210.00",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Contact_Number",
+            "doc_a_value": "(613) 238-2799",
+            "doc_b_value": "+1-613-238-2799",
+            "normalized_value": "+16132382799",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        }
+    ]
+}

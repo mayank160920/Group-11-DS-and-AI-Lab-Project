@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "MARKETING RESEARCH AUTHORIZATION",
+            "doc_b_value": "MARKET RESEARCH APPROVAL FORM",
+            "normalized_value": "MARKETING RESEARCH AUTHORIZATION",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "4/16/90",
+            "doc_b_value": "April 16, 1990",
+            "normalized_value": "1990-04-16",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "35,675",
+            "doc_b_value": "35675.00",
+            "normalized_value": "35675.00",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Percentage_Value",
+            "doc_a_value": "10%",
+            "doc_b_value": "0.10",
+            "normalized_value": "0.10",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Quantity_Count",
+            "doc_a_value": "400",
+            "doc_b_value": "450",
+            "normalized_value": "450",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Signature_Date",
+            "doc_a_value": "5/3/90",
+            "doc_b_value": "5/4/90",
+            "normalized_value": "1990-05-04",
+            "validation_type": "conditional",
+            "formula": "If Date > 5/3/90 then Late_Approval",
+            "validation_result": "mismatch"
+        }
+    ]
+}

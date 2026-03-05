@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "PURCHASE REQUISITION",
+            "doc_b_value": "PURCHASE ORDER FORM",
+            "normalized_value": "PURCHASE_ORDER",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "March 27, 1984",
+            "doc_b_value": "1984-03-27",
+            "normalized_value": "1984-03-27",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Rate_or_Price",
+            "doc_a_value": "$2050",
+            "doc_b_value": "$2100",
+            "normalized_value": "2100",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "$4100",
+            "doc_b_value": "$4200",
+            "normalized_value": "4200",
+            "validation_type": "derived_value",
+            "formula": "Rate_or_Price * 2",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Contact_Number",
+            "doc_a_value": "(919) 373-6663",
+            "doc_b_value": "919-373-6663",
+            "normalized_value": "919-373-6663",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Quantity_Count",
+            "doc_a_value": "2",
+            "doc_b_value": "2",
+            "normalized_value": "2",
+            "validation_type": "formula_validation",
+            "formula": "Total_Amount / Rate_or_Price",
+            "validation_result": "match"
+        }
+    ]
+}

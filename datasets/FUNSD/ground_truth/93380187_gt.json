@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "COUPON CODE REGISTRATION FORM",
+            "doc_b_value": "COUPON REGISTRATION DOCUMENT",
+            "normalized_value": "COUPON_REGISTRATION_FORM",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Issue_Date",
+            "doc_a_value": "MAY 1992",
+            "doc_b_value": "05/01/1992",
+            "normalized_value": "1992-05-01",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Coupon_Value",
+            "doc_a_value": "50c",
+            "doc_b_value": "0.50 USD",
+            "normalized_value": "0.50",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Percentage_Value",
+            "doc_a_value": "80%",
+            "doc_b_value": "85%",
+            "normalized_value": "0.85",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Signature_Date",
+            "doc_a_value": "JANUARY 8, 1992",
+            "doc_b_value": "1992-01-08",
+            "normalized_value": "1992-01-08",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "532188",
+            "doc_b_value": "532189",
+            "normalized_value": "532189",
+            "validation_type": "conditional",
+            "formula": "If doc_a_value is 532188 then increment by 1",
+            "validation_result": "match"
+        }
+    ]
+}

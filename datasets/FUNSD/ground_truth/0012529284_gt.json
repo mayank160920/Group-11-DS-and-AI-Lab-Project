@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "CHANGE OF AUTHORIZED COST",
+            "doc_b_value": "MODIFICATION OF AUTHORIZED EXPENDITURE",
+            "normalized_value": "CHANGE_OF_AUTHORIZED_COST",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "12-4-87",
+            "doc_b_value": "December 4, 1987",
+            "normalized_value": "1987-12-04",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Percentage_Value",
+            "doc_a_value": "10%",
+            "doc_b_value": "12%",
+            "normalized_value": "0.12",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "212,475",
+            "doc_b_value": "215,000",
+            "normalized_value": "215000",
+            "validation_type": "derived_value",
+            "formula": "Previous_Commitment + Adjustment",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Signature_Date",
+            "doc_a_value": "12/7/87",
+            "doc_b_value": "12/7/87",
+            "normalized_value": "1987-12-07",
+            "validation_type": "conditional",
+            "formula": "If Date_Signed >= Document_Date then Valid",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "C-51",
+            "doc_b_value": "C-52",
+            "normalized_value": "C-52",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        }
+    ]
+}

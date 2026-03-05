@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "COMPOUND PHYSICAL PARAMETERS",
+            "doc_b_value": "CHEMICAL COMPOUND DATA SHEET",
+            "normalized_value": "CHEMICAL COMPOUND DATA SHEET",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "11/13/81",
+            "doc_b_value": "November 13, 1981",
+            "normalized_value": "1981-11-13",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Quantity_Count",
+            "doc_a_value": "5g",
+            "doc_b_value": "5000mg",
+            "normalized_value": "5000",
+            "validation_type": "semantic_equivalence",
+            "formula": "1g = 1000mg",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Percentage_Value",
+            "doc_a_value": "50%",
+            "doc_b_value": "45%",
+            "normalized_value": "0.45",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "0.2 ml",
+            "doc_b_value": "1.0 ml",
+            "normalized_value": "1.0",
+            "validation_type": "derived_value",
+            "formula": "0.2ml + 0.8ml = 1.0ml",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Signature_Date",
+            "doc_a_value": "1/6/82",
+            "doc_b_value": "01/06/1982",
+            "normalized_value": "1982-01-06",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        }
+    ]
+}

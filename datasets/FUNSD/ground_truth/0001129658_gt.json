@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "Fax Cover Sheet",
+            "doc_b_value": "Facsimile Transmission Cover",
+            "normalized_value": "Fax Cover Sheet",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "10/13/99",
+            "doc_b_value": "October 13, 1999",
+            "normalized_value": "1999-10-13",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Contact_Number",
+            "doc_a_value": "305 400-6107",
+            "doc_b_value": "305-400-6108",
+            "normalized_value": "305-400-6108",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "4162/158",
+            "doc_b_value": "4162-158-REV",
+            "normalized_value": "4162-158",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Page_Count",
+            "doc_a_value": "",
+            "doc_b_value": "3",
+            "normalized_value": "3",
+            "validation_type": "conditional",
+            "formula": "If pages > 0 then count = 3",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Organization_Name",
+            "doc_a_value": "Winston & Strawn",
+            "doc_b_value": "Winston and Strawn LLP",
+            "normalized_value": "Winston & Strawn",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        }
+    ]
+}

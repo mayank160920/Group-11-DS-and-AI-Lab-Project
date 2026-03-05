@@ -1,0 +1,58 @@
+{
+    "entities": [
+        {
+            "entity_name": "Form_Title",
+            "doc_a_value": "CHANGE OF AUTHORIZED COST",
+            "doc_b_value": "MODIFICATION OF AUTHORIZED EXPENDITURE",
+            "normalized_value": "CHANGE_OF_AUTHORIZED_COST",
+            "validation_type": "exact_match",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Document_Date",
+            "doc_a_value": "11/28/84",
+            "doc_b_value": "1984-11-28",
+            "normalized_value": "1984-11-28",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Percentage_Value",
+            "doc_a_value": "0.5%",
+            "doc_b_value": "0.005",
+            "normalized_value": "0.005",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Total_Amount",
+            "doc_a_value": "221,000",
+            "doc_b_value": "221000.00",
+            "normalized_value": "221000.00",
+            "validation_type": "derived_value",
+            "formula": "220000 + 1000",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "Reference_ID",
+            "doc_a_value": "NP-75",
+            "doc_b_value": "NP-76",
+            "normalized_value": "NP-76",
+            "validation_type": "conflict",
+            "formula": null,
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "Signature_Date",
+            "doc_a_value": "12/11",
+            "doc_b_value": "1984-12-11",
+            "normalized_value": "1984-12-11",
+            "validation_type": "semantic_equivalence",
+            "formula": null,
+            "validation_result": "match"
+        }
+    ]
+}
