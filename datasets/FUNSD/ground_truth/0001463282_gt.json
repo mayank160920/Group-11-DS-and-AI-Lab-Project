@@ -1,58 +1,84 @@
 {
-    "entities": [
-        {
-            "entity_name": "Form_Title",
-            "doc_a_value": "MARKETING RESEARCH AUTHORIZATION",
-            "doc_b_value": "MARKET RESEARCH APPROVAL FORM",
-            "normalized_value": "MARKETING RESEARCH AUTHORIZATION",
-            "validation_type": "exact_match",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Document_Date",
-            "doc_a_value": "4/16/90",
-            "doc_b_value": "April 16, 1990",
-            "normalized_value": "1990-04-16",
-            "validation_type": "semantic_equivalence",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Total_Amount",
-            "doc_a_value": "35,675",
-            "doc_b_value": "35675.00",
-            "normalized_value": "35675.00",
-            "validation_type": "exact_match",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Percentage_Value",
-            "doc_a_value": "10%",
-            "doc_b_value": "0.10",
-            "normalized_value": "0.10",
-            "validation_type": "semantic_equivalence",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Quantity_Count",
-            "doc_a_value": "400",
-            "doc_b_value": "450",
-            "normalized_value": "450",
-            "validation_type": "conflict",
-            "formula": null,
-            "validation_result": "mismatch"
-        },
-        {
-            "entity_name": "Signature_Date",
-            "doc_a_value": "5/3/90",
-            "doc_b_value": "5/4/90",
-            "normalized_value": "1990-05-04",
-            "validation_type": "conditional",
-            "formula": "If Date > 5/3/90 then Late_Approval",
-            "validation_result": "mismatch"
-        }
-    ]
+  "entities": [
+    {
+      "entity_name": "document_title",
+      "doc_a_value": "MARKETING RESEARCH AUTHORIZATION",
+      "doc_b_value": "marketing research authorization",
+      "normalized_value": "marketing research authorization",
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "document_reference_number",
+      "doc_a_value": "6",
+      "doc_b_value": "06",
+      "normalized_value": "6",
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "document_stamp_id",
+      "doc_a_value": "670801704",
+      "doc_b_value": "670801704",
+      "normalized_value": "670801704",
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "document_date",
+      "doc_a_value": "4/16/90",
+      "doc_b_value": "April 16, 1990",
+      "normalized_value": "4/16/90",
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "source_organisation",
+      "doc_a_value": "Kapuler",
+      "doc_b_value": "Kapuler Marketing Research",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "project_no_or_code",
+      "doc_a_value": "1990-48B",
+      "doc_b_value": "1990-48B",
+      "normalized_value": null,
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "project_name",
+      "doc_a_value": "Y-1 Ultra 100's vs. Winston Ultra 100's",
+      "doc_b_value": "Y-1 Ultra 100s versus Winston Ultra 100s",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "primary_signer_name",
+      "doc_a_value": "P.W. Putney",
+      "doc_b_value": "P.W. PUTNEY",
+      "normalized_value": "p.w. putney",
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "cc_list",
+      "doc_a_value": "S. Willinger (3), K. A. Hutchison/S. A. Howard",
+      "doc_b_value": "S. Willinger (3), K. A. Hutchison/S. A. Howard",
+      "normalized_value": null,
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "final_volume_or_quantity",
+      "doc_a_value": "400",
+      "doc_b_value": "500",
+      "normalized_value": "400",
+      "validation_type": "conflict",
+      "validation_result": "mismatch"
+    }
+  ]
 }

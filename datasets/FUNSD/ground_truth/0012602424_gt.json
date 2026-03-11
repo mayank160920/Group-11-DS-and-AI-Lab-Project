@@ -1,58 +1,76 @@
 {
-    "entities": [
-        {
-            "entity_name": "Form_Title",
-            "doc_a_value": "CHANGE OF AUTHORIZED COST",
-            "doc_b_value": "MODIFICATION OF AUTHORIZED EXPENDITURE",
-            "normalized_value": "CHANGE_OF_AUTHORIZED_COST",
-            "validation_type": "exact_match",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Document_Date",
-            "doc_a_value": "11/28/84",
-            "doc_b_value": "1984-11-28",
-            "normalized_value": "1984-11-28",
-            "validation_type": "semantic_equivalence",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Percentage_Value",
-            "doc_a_value": "0.5%",
-            "doc_b_value": "0.005",
-            "normalized_value": "0.005",
-            "validation_type": "semantic_equivalence",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Total_Amount",
-            "doc_a_value": "221,000",
-            "doc_b_value": "221000.00",
-            "normalized_value": "221000.00",
-            "validation_type": "derived_value",
-            "formula": "220000 + 1000",
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Reference_ID",
-            "doc_a_value": "NP-75",
-            "doc_b_value": "NP-76",
-            "normalized_value": "NP-76",
-            "validation_type": "conflict",
-            "formula": null,
-            "validation_result": "mismatch"
-        },
-        {
-            "entity_name": "Signature_Date",
-            "doc_a_value": "12/11",
-            "doc_b_value": "1984-12-11",
-            "normalized_value": "1984-12-11",
-            "validation_type": "semantic_equivalence",
-            "formula": null,
-            "validation_result": "match"
-        }
-    ]
+  "entities": [
+    {
+      "entity_name": "document_title",
+      "doc_a_value": "CHANGE OF AUTHORIZED COST",
+      "doc_b_value": "Change of Authorized Cost",
+      "normalized_value": "change of authorized cost",
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "document_reference_number",
+      "doc_a_value": "NP-75",
+      "doc_b_value": "NP 75",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "document_stamp_id",
+      "doc_a_value": "681925147",
+      "doc_b_value": "681925148",
+      "normalized_value": "681925147",
+      "validation_type": "conflict",
+      "validation_result": "mismatch"
+    },
+    {
+      "entity_name": "document_date",
+      "doc_a_value": "11/28/84",
+      "doc_b_value": "November 28, 1984",
+      "normalized_value": "11/28/84",
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "source_organisation",
+      "doc_a_value": "BURKE MARKETING RESEARCH",
+      "doc_b_value": "Burke Mktg Research",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "project_no_or_code",
+      "doc_a_value": "1984-175NP",
+      "doc_b_value": "1984-175NP",
+      "normalized_value": "1984-175np",
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "project_name",
+      "doc_a_value": "GEMINI AWARENESS ATTITUDE & USAGE MONITOR - PORTLAND",
+      "doc_b_value": "Gemini Awareness Attitude and Usage Monitor, Portland",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "cc_list",
+      "doc_a_value": "S. WILLINGER (3), RESEARCH GROUP MANAGER",
+      "doc_b_value": "Research Group Manager, S. Willinger (3)",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "final_amount",
+      "doc_a_value": "221,000",
+      "doc_b_value": "212,000",
+      "normalized_value": "221,000",
+      "validation_type": "conflict",
+      "validation_result": "mismatch"
+    }
+  ]
 }

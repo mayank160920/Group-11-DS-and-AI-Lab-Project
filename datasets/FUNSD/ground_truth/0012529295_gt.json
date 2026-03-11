@@ -1,67 +1,92 @@
 {
-    "entities": [
-        {
-            "entity_name": "Document_Date",
-            "doc_a_value": "10/9/87",
-            "doc_b_value": "October 9, 1987",
-            "normalized_value": "1987-10-09",
-            "validation_type": "semantic_equivalence",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Reference_ID",
-            "doc_a_value": "C-40",
-            "doc_b_value": "C-41",
-            "normalized_value": "C-41",
-            "validation_type": "exact_match",
-            "formula": null,
-            "validation_result": "mismatch"
-        },
-        {
-            "entity_name": "Percentage_Value",
-            "doc_a_value": "10%",
-            "doc_b_value": "0.10",
-            "normalized_value": "0.10",
-            "validation_type": "semantic_equivalence",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Total_Amount",
-            "doc_a_value": "780,900.00",
-            "doc_b_value": "780900",
-            "normalized_value": "780900.00",
-            "validation_type": "exact_match",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Quantity_Count",
-            "doc_a_value": "1,500",
-            "doc_b_value": "1500",
-            "normalized_value": "1500",
-            "validation_type": "exact_match",
-            "formula": null,
-            "validation_result": "match"
-        },
-        {
-            "entity_name": "Total_Amount",
-            "doc_a_value": "-70,825.00",
-            "doc_b_value": "-70825.01",
-            "normalized_value": "-70825.01",
-            "validation_type": "conflict",
-            "formula": null,
-            "validation_result": "mismatch"
-        },
-        {
-            "entity_name": "Total_Amount",
-            "doc_a_value": "1,233,308.08",
-            "doc_b_value": "1233308.08",
-            "normalized_value": "1233308.08",
-            "validation_type": "formula_validation",
-            "formula": "Current_Balance_Available - This_Change = New_Balance",
-            "validation_result": "match"
-        }
-    ]
+  "entities": [
+    {
+      "entity_name": "document_title",
+      "doc_a_value": "MARKET RESEARCH AUTHORIZATION",
+      "doc_b_value": "Market Research Authorization",
+      "normalized_value": "market research authorization",
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "document_reference_number",
+      "doc_a_value": "No. C-40",
+      "doc_b_value": "Ref C-40",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "document_stamp_id",
+      "doc_a_value": "465915288",
+      "doc_b_value": "465915288",
+      "normalized_value": "465915288",
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "document_date",
+      "doc_a_value": "10/9/87",
+      "doc_b_value": "October 9, 1987",
+      "normalized_value": "10/9/87",
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "source_organisation",
+      "doc_a_value": "Kapuler Marketing Research",
+      "doc_b_value": "Kapuler Mktg Research",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "project_no_or_code",
+      "doc_a_value": "1987-113CA",
+      "doc_b_value": "1987-113CA",
+      "normalized_value": null,
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "project_name",
+      "doc_a_value": "CAPRI Expansion: California - A&U Wave II",
+      "doc_b_value": "CAPRI Expansion: CA - A&U Wave 2",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "primary_signer_name",
+      "doc_a_value": "L. J. Spurrier",
+      "doc_b_value": "L. J. Spurrier",
+      "normalized_value": null,
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "cc_list",
+      "doc_a_value": "S. Willinger (3), G. D. Raphael, V. Hansberry (If Int.)",
+      "doc_b_value": "S. Willinger (3), G. D. Raphael, V. Hansberry",
+      "normalized_value": null,
+      "validation_type": "semantic_match",
+      "validation_result": "match"
+    },
+    {
+      "entity_name": "final_volume_or_quantity",
+      "doc_a_value": "1,500",
+      "doc_b_value": "15,000",
+      "normalized_value": "1500",
+      "validation_type": "conflict",
+      "validation_result": "mismatch"
+    },
+    {
+      "entity_name": "final_amount",
+      "doc_a_value": "$70,825 +/- 10%",
+      "doc_b_value": "$70,825 +/- 10%",
+      "normalized_value": "70825",
+      "validation_type": "exact_match",
+      "validation_result": "match"
+    }
+  ]
 }
