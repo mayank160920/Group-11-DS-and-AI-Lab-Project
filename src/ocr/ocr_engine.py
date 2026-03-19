@@ -88,7 +88,6 @@ class OCREngine:
             pipeline_version=self.pipeline_version,
             use_doc_orientation_classify=self.use_doc_orientation_classify,
             use_doc_unwarping=self.use_doc_unwarping,
-            use_angle_cls=True,
             enable_mkldnn=False # MKL-DNN can cause issues in some environments, so we disable it by default
         )
 
