@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from shared_types import StructuredPage
-from paddlex.inference.pipelines.paddleocr_vl.result import PaddleOCRVLResult
+# from paddlex.inference.pipelines.paddleocr_vl.result import PaddleOCRVLResult
 
 class OCREngine:
     SUPPORTED_ENGINES = {"surya", "paddle"}
@@ -74,7 +74,7 @@ class OCREngine:
 
     def _create_paddle_pipeline(self) -> Any:
         try:
-            from paddleocr import PaddleOCRVL
+            from paddleocr import PaddleOCR 
         except ImportError as exc:
             raise ImportError(
                 "PaddleOCR is required for the 'paddle' backend. "
@@ -83,17 +83,19 @@ class OCREngine:
                 "after installing a compatible PaddlePaddle build."
             ) from exc
 
-        return PaddleOCRVL(
+        return PaddleOCR (
             device=self.device,
-            pipeline_version=self.pipeline_version,
+            text_recognition_model_name="PP-OCRv3_mobile_rec",
             use_doc_orientation_classify=self.use_doc_orientation_classify,
             use_doc_unwarping=self.use_doc_unwarping,
             enable_mkldnn=False # MKL-DNN can cause issues in some environments, so we disable it by default
         )
 
-    def _extract_raw_text(self, result: PaddleOCRVLResult) -> str:
-        markdown_text = result.markdown["markdown_texts"]
-        text = self._flatten_text(markdown_text)
+    def _extract_raw_text(self, result) -> str:
+        # markdown_text = result.markdown["markdown_texts"]
+        # text = self._flatten_text(markdown_text)
+        
+        text = " ".join(result['rec_texts'])
         return text
         
     def _extract_section_headers(self, raw_text: str) -> list[str]:
