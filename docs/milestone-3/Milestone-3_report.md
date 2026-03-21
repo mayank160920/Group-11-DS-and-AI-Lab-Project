@@ -10,7 +10,7 @@
 
 ## Abstract
 
-This document presents the complete model architecture designed and implemented for Milestone 3 of the Configurable Multimodal Semantic Validation System (CMSVS) project. Building directly on the datasets prepared in Milestone 2, this milestone defines, justifies, and establishes the end-to-end technical pipeline for two core system capabilities: **(1) Config-Driven Custom Named Entity Recognition (NER)** and **(2) Section-Wise Chain-of-Thought Semantic Validation** across heterogeneous document pairs. The architecture adopts a cost-first design philosophy, leveraging free-tier API services throughout — specifically **Groq API** and **NVIDIA NIM free-tier API** for multimodal LLM inference, **NVIDIA's llama-3.2-nemoretriever-300m-embed-v1** for dense semantic embeddings, and **PaddleOCR Mobile** for lightweight text detection — to deliver enterprise-grade document intelligence at near-zero inference cost. A hybrid retrieval layer combining BM25 keyword search with dense vector search routes MLLM calls to only the most relevant document pages, achieving an estimated 90% reduction in token consumption compared to naive full-document approaches. The system accepts both PDF and image inputs, applying full RAG-assisted extraction for PDFs and a direct visual extraction path for image inputs. Expression-based entity derivation is supported via the SimpleEval library for entities whose values must be mathematically computed from other extracted values. Validation is performed section-wise, mirroring the logical structure of the configuration file and enabling granular per-section accuracy reporting.
+This document presents the complete model architecture designed and implemented for Milestone 3 of the Configurable Multimodal Semantic Validation System (CMSVS) project. Building directly on the datasets prepared in Milestone 2, this milestone defines, justifies, and establishes the end-to-end technical pipeline for two core system capabilities: **(1) Config-Driven Custom Named Entity Recognition (NER)** and **(2) Section-Wise Chain-of-Thought Semantic Validation** across heterogeneous document pairs. The architecture adopts a cost-first design philosophy, leveraging free-tier API services throughout — specifically **Groq API** and **NVIDIA NIM free-tier API** for multimodal LLM inference, **NVIDIA's llama-3.2-nemoretriever-300m-embed-v1** for dense semantic embeddings powering the retrieval layer, and **PaddleOCR Mobile** for lightweight text detection — to deliver enterprise-grade document intelligence at near-zero inference cost. A dense vector retrieval layer using semantic embeddings routes MLLM calls to only the most relevant document pages, achieving an estimated 90% reduction in token consumption compared to naive full-document approaches. The system accepts both PDF and image inputs, applying full RAG-assisted extraction for PDFs and a direct visual extraction path for image inputs. Expression-based entity derivation is supported via the SimpleEval library for entities whose values must be mathematically computed from other extracted values. Validation is performed section-wise, mirroring the logical structure of the configuration file and enabling granular per-section accuracy reporting.
 
 ---
 
@@ -25,10 +25,10 @@ Milestone 3 is defined by three primary requirements per the project guidelines:
 These requirements are addressed across the following dimensions in this document:
 
 - **Architecture Selection:** Every model, library, and component chosen for the CMSVS pipeline is identified with explicit justification for why it was selected over alternatives.
-- **Architecture Design:** The novel system-level design — RAG-assisted page routing, hybrid retrieval, expression-based entity derivation, and section-wise semantic validation — is documented in full.
+- **Architecture Design:** The novel system-level design — RAG-assisted page routing via dense retrieval, expression-based entity derivation, and section-wise semantic validation — is documented in full.
 - **End-to-End Setup:** The complete pipeline from raw document input to structured validation report is specified, with all integration points between components defined.
 
-The architecture is directly informed by the datasets prepared in Milestone 2. The four augmentation categories created in M2 (semantic paraphrase changes, numeric format variants, value conflicts, and coverage reclassification) correspond precisely to the four validation scenario types the M3 architecture is designed to handle. This traceability from dataset to architecture to evaluation is a deliberate design principle.
+The architecture is directly informed by the datasets prepared in Milestone 2. The four augmentation categories created in M2 — semantic paraphrase changes, numeric format variants, value conflicts, and coverage reclassification — correspond precisely to the four validation scenario types the M3 architecture is designed to handle. This traceability from dataset to architecture to evaluation is a deliberate design principle.
 
 ---
 
@@ -39,10 +39,10 @@ The architecture is directly informed by the datasets prepared in Milestone 2. T
 The CMSVS architecture is governed by four principles that informed every component selection and design decision:
 
 **Principle 1 — Cost-First Design**
-Every component is selected for minimum cost without sacrificing accuracy. Free-tier API services are used wherever available. Expensive LLM calls are minimized through intelligent routing. Local computation replaces API calls wherever feasible.
+Every component is selected for minimum cost without sacrificing accuracy. Free-tier API services are used wherever available. Expensive LLM calls are minimized through intelligent retrieval-based routing. Local computation replaces API calls wherever feasible.
 
 **Principle 2 — Clean Separation of Responsibilities**
-Each component in the pipeline has exactly one job. The OCR layer finds text. The retrieval layer finds pages. The MLLM layer understands content. The expression evaluator computes values. The validator compares values. No component performs work outside its designated responsibility.
+Each component in the pipeline has exactly one job. The OCR layer finds text for indexing. The retrieval layer finds relevant pages. The MLLM layer understands and extracts content visually. The expression evaluator computes derived values. The validator compares values semantically. No component performs work outside its designated responsibility.
 
 **Principle 3 — Configurable Without Code Changes**
 Every domain-specific behavior is controlled by the YAML configuration file. Switching from healthcare insurance validation to logistics purchase order validation requires only a new configuration file — no model retraining, no code modification, no infrastructure change.
@@ -52,7 +52,7 @@ Every extraction and validation decision must be traceable to a specific locatio
 
 ### 2.2 The Two-Task Architecture
 
-The system solves two distinct tasks that are executed sequentially for each document pair:
+The system solves two distinct tasks executed sequentially for each document pair:
 
 **Task 1 — Custom NER:** Extract the value of each configured entity from each document. The extraction path varies based on input type (PDF or Image) and entity type (DIRECT or EXPRESSION).
 
@@ -65,96 +65,98 @@ The system solves two distinct tasks that are executed sequentially for each doc
 The CMSVS pipeline consists of seven functional layers executed in sequence:
 
 ```
-Layer 1:  Input Routing        — Detect PDF vs Image, load accordingly
-Layer 2:  OCR Processing       — Extract structured text (PDF path only)
-Layer 3:  Dual Indexing        — Build BM25 + Dense retrieval index
-Layer 4:  RAG Page Routing     — Identify relevant pages per section
-Layer 5:  MLLM Extraction      — Visual entity extraction from page images
-Layer 6:  Expression Engine    — Compute derived entity values via SimpleEval
+Layer 1:  Input Routing         — Detect PDF vs Image, load accordingly
+Layer 2:  OCR Processing        — Extract text for indexing (PDF path only)
+Layer 3:  Dense Vector Indexing — Build semantic embedding index per page
+Layer 4:  RAG Page Routing      — Retrieve relevant pages via dense search
+Layer 5:  MLLM Extraction       — Visual entity extraction from page images
+Layer 6:  Expression Engine     — Compute derived entity values via SimpleEval
 Layer 7:  Section-Wise Validation — CoT semantic comparison per section
 ```
 ![E2E Design](img/E2E%20Design.jpeg)
 
-
 ### 3.1 Input Routing Layer
 
-The pipeline accepts two input types:
+The pipeline accepts two input types and routes each through the appropriate processing path:
 
-**PDF Input Path (Full RAG Pipeline)**
-When a PDF file is provided, the system executes the complete pipeline: OCR processing produces structured text for indexing; the dual index enables page routing; only the most relevant pages are passed to the MLLM for extraction. This path minimizes MLLM token consumption for multi-page documents.
+**PDF Input Path — Full RAG Pipeline**
+When a PDF file is provided, the system executes the complete pipeline. OCR processing produces structured text used to build the dense vector index. The retrieval layer identifies the most relevant pages per section. Only those pages are passed to the MLLM for extraction, minimizing token consumption for multi-page documents.
 
-**Image Input Path (Direct MLLM Path)**
-When an image file is provided (JPEG, PNG, TIFF, BMP, or WebP), the system bypasses OCR and RAG entirely. The image is loaded, base64-encoded, and passed directly to the MLLM with all section entities extracted in a single call. This path is optimal for single-page documents and scanned form images such as those in the FUNSD dataset.
+**Image Input Path — Direct MLLM Path**
+When an image file is provided (JPEG, PNG, TIFF, BMP, or WebP), the system bypasses OCR and retrieval entirely. The image is loaded, base64-encoded, and passed directly to the MLLM with all section entities extracted in a single call. This path is optimal for single-page documents and scanned form images such as those in the FUNSD dataset.
 
-Both paths produce an identical output structure — a dictionary of FinalEntityValue objects — ensuring the downstream validation layer operates identically regardless of input type.
-
-![E2E Design](img/Components.jpeg)
+Both paths produce an identical output structure — a dictionary of FinalEntityValue objects keyed by entity name — ensuring the downstream validation layer operates identically regardless of input type.
 
 ### 3.2 OCR Processing Layer
 
 **Selected Tool: PaddleOCR Mobile Model**
 
-PaddleOCR's mobile-optimized text detection and recognition model is used for the OCR layer. This model was selected for the following reasons:
+PaddleOCR's mobile-optimized text detection and recognition model is used for the OCR layer. Its role is strictly limited to producing text for the dense vector index — it is never used as the source of extracted entity values.
 
 | Criterion | PaddleOCR Mobile | Justification |
 |---|---|---|
 | Deployment | Local inference | Zero API cost, no network dependency |
-| Speed | Fastest among open-source OCR | Low latency for indexing phase |
-| Hardware | CPU-compatible | No GPU required |
-| Text accuracy | Adequate for indexing purposes | Exact text quality not critical — OCR output is used only for RAG indexing, not for final extraction |
+| Speed | Fast — mobile-optimized weights | Low latency for the indexing phase |
+| Hardware | CPU-compatible | No GPU requirement |
+| Text accuracy | Adequate for semantic indexing | Exact layout not needed — text feeds embeddings only |
 | License | Apache 2.0 | Free for all use cases |
 
-**Critical Design Decision:** The OCR output is used exclusively for building the retrieval index. It is never used as the source of extracted entity values. The MLLM always reads raw page images for extraction, completely bypassing any OCR quality limitations. This means PaddleOCR Mobile's text-only capability (without deep layout analysis) is entirely sufficient for its role in the pipeline.
+**Critical Design Decision:** Because the MLLM always reads raw page images for final extraction, PaddleOCR's text-only capability is entirely sufficient. Any OCR imperfections affect only the retrieval index quality — and the dense embedding model is robust enough to handle minor OCR noise through semantic similarity rather than exact matching.
 
 For each document page, PaddleOCR Mobile produces:
-- Raw extracted text (full page content)
-- Detected key-value patterns (Label: Value structures)
-- Section header candidates (short, uppercase or title-case lines)
-- A structured index text combining all of the above for retrieval
+- Raw extracted text covering the full page content
+- Detected key-value patterns using Label: Value structure recognition
+- Section header candidates identified by heuristics — short lines with uppercase or title-case formatting
+- A composite index text combining all of the above in a structured format optimized for embedding
 
-### 3.3 Dual Indexing Layer
+### 3.3 Dense Vector Indexing Layer
 
-Two complementary indices are built from the OCR output for each document:
+**Selected Model: llama-3.2-nemoretriever-300m-embed-v1 via NVIDIA NIM Free Tier**
 
-**Index A — BM25 Keyword Index**
-The BM25Okapi algorithm (via the rank_bm25 Python library) provides exact keyword matching. This index excels at retrieving pages containing specific numeric values, domain-specific terms, and entity labels that appear verbatim in the document. For healthcare SBC documents, terms like "deductible," "coinsurance," and specific dollar amounts are retrieved with high precision by BM25.
+Each page's composite index text is embedded using NVIDIA's NemoRetriever model to produce a dense semantic vector. These vectors are stored in an in-memory ChromaDB collection keyed by page number.
 
-**Index B — Dense Vector Index (NVIDIA NemoRetriever Embeddings)**
-Dense embeddings are generated using **NVIDIA's llama-3.2-nemoretriever-300m-embed-v1** model, accessed via the NVIDIA NIM free-tier API. This model produces semantic embeddings that capture meaning rather than exact terms, enabling retrieval of pages that discuss the same concept using different terminology — for example, retrieving a page about "cost-sharing obligations" when queried about "copayment amounts."
+**Why Dense-Only Retrieval:**
+
+The decision to use dense vector retrieval without a keyword-based component reflects the primary retrieval challenge in this domain. The core difficulty in routing to the correct page is not finding exact keyword matches — it is bridging the semantic gap between the entity descriptions written in the configuration file and the varied terminology used in real insurance documents. Dense retrieval excels precisely at this task because it operates on meaning rather than surface form.
+
+For example, a configuration entity described as "the annual amount a member must pay before insurance begins covering costs" must correctly route to a page that contains "deductible" — a term not present in the description at all. Dense embeddings capture this semantic relationship naturally. A keyword approach would fail here entirely.
+
+Additionally, numeric values and exact terms that dense retrieval might miss in edge cases are handled downstream by the MLLM, which reads the raw page image directly and is not dependent on the retrieval index for precise value matching.
 
 **Why llama-3.2-nemoretriever-300m-embed-v1:**
 
 | Criterion | Selection | Justification |
 |---|---|---|
-| Cost | Free (NVIDIA NIM free tier) | Zero embedding cost |
-| Model Size | 300M parameters | Fast inference, low memory |
-| Optimization | Retrieval-specific training | Outperforms general-purpose embeddings on document retrieval |
-| Provider | NVIDIA NIM API | Enterprise-grade reliability, free tier sufficient for project scale |
-| Vector Dimensions | Optimized for semantic similarity | High retrieval accuracy on domain-specific documents |
+| Cost | Free — NVIDIA NIM free tier | Zero embedding cost for the entire project |
+| Training objective | Retrieval-specific | Trained to maximize semantic similarity for relevant passages, not general language modeling |
+| Model size | 300M parameters | Fast inference, low memory footprint |
+| Provider reliability | NVIDIA NIM enterprise API | Stable, rate-limit-generous free tier |
+| Vector quality | High on domain-specific retrieval | Outperforms general-purpose embeddings on structured document retrieval tasks |
 
-Both indices are stored in an in-memory ChromaDB instance, destroyed after each document is processed. There is no persistent storage requirement.
+**Index Structure:**
+Each document produces one temporary in-memory ChromaDB collection. The collection stores one vector per page with the page number embedded in the metadata. The collection is destroyed after the document is fully processed — there is no persistent storage requirement and no cross-document contamination risk.
 
 ### 3.4 RAG Page Routing Layer
 
-The retrieval layer's sole responsibility is to return relevant page numbers. It performs no extraction and calls no paid API.
+The retrieval layer's sole responsibility is to return relevant page numbers. It performs no extraction and calls no paid inference API beyond the NVIDIA NIM embedding endpoint.
 
 **Retrieval Query Construction:**
-For each section in the configuration file, a rich retrieval query is constructed by combining:
-- Section name (with underscores replaced by spaces)
-- Section keywords defined in the configuration
+For each section in the configuration file, a retrieval query is constructed by combining the following signals:
+- Section name with underscores replaced by spaces
+- Section keywords defined in the configuration for semantic anchoring
 - All entity names in the section
 - All entity descriptions in the section
-- All entity example values (boosts BM25 numeric matching)
+- All entity example values for format and domain context
 
-**Hybrid Retrieval with Reciprocal Rank Fusion (RRF):**
-Both BM25 and dense retrieval are executed independently, each returning a ranked list of pages. The two ranked lists are combined using Reciprocal Rank Fusion (RRF) with the standard constant k=60. RRF is preferred over score-based fusion because it is robust to score scale differences between BM25 (unbounded) and cosine similarity (0 to 1).
+This multi-signal query design ensures the embedding captures both the structural signal (what section this is) and the semantic signal (what types of values are being sought), maximizing retrieval accuracy.
 
-The formula applied is: RRF Score = Σ 1 / (60 + rank_i) for each retrieval method.
+**Dense Retrieval Process:**
+The query text is embedded using the same NemoRetriever model used for document indexing, ensuring the query and document vectors occupy the same semantic space. ChromaDB performs cosine similarity search against all page vectors in the collection, returning the top-K pages ranked by similarity score.
 
-The top-2 pages by fused RRF score are returned as the routing result for each section.
+The default top-K is 2, meaning the two most semantically relevant pages are returned for each section. This value is configurable and is expanded to 4 during fallback processing.
 
 **Fallback Mechanism:**
-If the MLLM extraction on the top-2 pages returns a confidence score below 0.75 for any entity, the retriever is queried again with top_k expanded to 4, and extraction is retried on the larger page set. If confidence remains below threshold after fallback, the entity is flagged for human review.
+If the MLLM extraction on the top-2 pages returns a confidence score below 0.75 for any entity, the retriever is queried again with top-K expanded to 4, and extraction is retried on the larger page set. If confidence remains below threshold after fallback, the entity is flagged for human review and preserved in the output report with its best available extraction and a review_required flag.
 
 ![E2E Design](img/extraction%20fallback%20strategy.jpeg)
 
@@ -163,130 +165,158 @@ If the MLLM extraction on the top-2 pages returns a confidence score below 0.75 
 **Primary Provider: Groq API (Free Tier)**
 **Secondary Provider: NVIDIA NIM API (Free Tier)**
 
-The MLLM extraction layer performs visual understanding of document page images. Two free-tier LLM providers are used:
+The MLLM extraction layer is responsible for visual understanding of document page images — the only component in the pipeline that requires genuine AI reasoning about document content.
 
-**Groq API** is the primary provider, offering free-tier access to high-performance LLM inference with very high throughput. Groq's LPU-based inference architecture delivers exceptionally low latency, making it well-suited for the iterative per-section extraction calls in the pipeline.
-
-**NVIDIA NIM API** serves as the secondary provider and fallback, offering free-tier access to NVIDIA-hosted models optimized for enterprise document tasks.
-
-**Model Selection Rationale:**
+**Provider Selection:**
 
 | Provider | Model | Role | Justification |
 |---|---|---|---|
-| Groq (Free) | llama-3.3-70b-versatile / mixtral-8x7b | Primary extraction | Free tier, high throughput, strong instruction following |
-| NVIDIA NIM (Free) | meta/llama-3.1-70b-instruct | Secondary / fallback | Free tier, strong JSON output reliability |
+| Groq (Free) | llama-3.3-70b-versatile | Primary extraction and validation | Free tier, exceptionally high throughput via LPU architecture, strong JSON output reliability |
+| Groq (Free) | mixtral-8x7b-32768 | Alternative for long-context pages | Extended context window for dense multi-column pages |
+| NVIDIA NIM (Free) | meta/llama-3.1-70b-instruct | Fallback provider | Independent infrastructure, free tier, strong instruction following |
 
-**Why Visual/Multimodal for Extraction:**
-Document page images are passed directly to the MLLM rather than using OCR-extracted text for extraction. This approach:
-- Preserves table structure, column relationships, and spatial context
-- Handles scanned documents without OCR degradation
-- Avoids the column-interleaving problem identified in M2 for multi-column SBC PDFs
-- Enables the model to use visual hierarchy (font size, bold text, borders) as semantic signals
+**Why Groq as Primary Provider:**
+Groq's LPU (Language Processing Unit) architecture delivers inference at 500–800 tokens per second, compared to 30–80 tokens per second for GPU-based API providers. For a pipeline making 5–10 LLM calls per document pair across extraction and validation stages, this speed advantage translates to significantly shorter end-to-end processing time. Groq's free tier provides sufficient daily token allowance to process the full 20-document-pair evaluation dataset without cost.
 
-**Extraction Mode — Section Batching:**
-Rather than calling the MLLM once per entity, all entities within a section are extracted in a single MLLM call, with the page images for that section passed alongside. This section-batching approach reduces MLLM calls from N_entities to N_sections — for a 5-section, 18-entity configuration, this reduces API calls from 18 to 5 per document, a 72% reduction.
+**Why Visual Extraction Over Text Extraction:**
+Document page images are passed directly to the MLLM rather than OCR-extracted text for all entity extraction. This design choice addresses documented failure modes observed during M2 dataset preparation:
+
+- Multi-column SBC PDFs processed by text extraction libraries produce column-interleaved output where adjacent column content is concatenated, garbling table row logic
+- Spatial relationships between table headers and cell values are lost in flat text representation
+- Visual hierarchy signals — font size, bold text, table borders, column alignment — carry semantic meaning that text-only processing discards
+- Scanned documents with OCR noise produce degraded text that misleads downstream extraction
+
+The MLLM reads page images as a human reader would, using all available visual and spatial context for accurate extraction.
+
+**Section-Batched Extraction:**
+All entities within a single configuration section are extracted in one MLLM call, with the page images for that section passed alongside all entity definitions. This section-batching reduces MLLM API calls from N_entities to N_sections. For an 18-entity, 5-section configuration, this reduces extraction calls from 18 to 5 per document — a 72% reduction in API calls.
 
 **Entity Extraction Types:**
 
-*DIRECT Entities:* The MLLM is instructed to locate and extract the value exactly as it appears in the document image. The prompt includes the entity name, natural language description, extraction logic hint, and an example value format.
+*DIRECT Entities:* The MLLM locates and extracts the value exactly as it appears in the document image. The prompt provides entity name, natural language description, extraction logic hint from the configuration, and an example value format for output calibration.
 
-*EXPRESSION Variable Entities:* For entities declared with EXPRESSION logic in the configuration, the MLLM extracts each variable component value rather than a final computed value. These component values are passed to the SimpleEval engine for computation.
+*EXPRESSION Variable Entities:* For entities declared with EXPRESSION logic, the MLLM extracts each component variable value rather than a final computed result. These component values are labeled clearly in the prompt as expression variables destined for mathematical computation. The MLLM's role is accurate visual extraction of raw component values — computation is handled separately by SimpleEval.
+
+**Output Schema Enforcement:**
+The MLLM is instructed to return a strict JSON object for each extraction containing: entity name, extracted value (or null), extraction status, source page number, source region description, confidence score (0.0 to 1.0), and raw surrounding context for audit. Responses that fail JSON parsing trigger a retry with explicit schema re-instruction, up to three attempts before a fallback null response is recorded.
 
 ### 3.6 Expression Engine Layer
 
-For entities where the configuration specifies `entity_extraction_logic: EXPRESSION`, the system computes the final entity value mathematically from extracted component values.
+**Selected Tool: SimpleEval Library**
 
-**Tool: SimpleEval Library**
-SimpleEval is a sandboxed Python expression evaluator. It was selected over Python's built-in `eval()` function because it restricts execution to safe arithmetic and comparison operations only, preventing any possibility of arbitrary code execution from malicious or malformed expression templates.
+For entities where the configuration specifies `entity_extraction_logic: EXPRESSION`, the system computes the final entity value from extracted component variables using the SimpleEval sandboxed expression evaluator.
+
+**Why SimpleEval Over Python eval():**
+Python's built-in `eval()` can execute arbitrary code, presenting an unacceptable security risk in a system where configuration files are authored by domain experts. A malformed or malicious expression template could execute system commands, access files, or import dangerous modules. SimpleEval enforces a strict whitelist of permitted operations, preventing all code execution outside safe arithmetic and mathematical functions.
 
 **Supported Operations:**
-- Arithmetic: addition, subtraction, multiplication, division, exponentiation
-- Comparison: greater than, less than, equality
-- Functions: round(), abs(), min(), max(), sum(), sqrt(), ceil(), floor()
+- Arithmetic operators: addition, subtraction, multiplication, division, exponentiation
+- Comparison operators: greater than, less than, equality, inequality
+- Safe functions: round(), abs(), min(), max(), sum(), sqrt(), ceil(), floor()
 - Conditional expressions: value_if_true if condition else value_if_false
 
-**Expression Flow:**
-1. Configuration defines expression template and variable list
-2. MLLM extracts each variable as a pseudo-entity from document images
-3. Extracted string values are parsed to numeric (handling $, commas, % symbols)
-4. SimpleEval evaluates the template with the numeric variable values
-5. Result is formatted according to the entity data_type (monetary, percentage, etc.)
-6. Full audit trail is written including template, variable values, and computed result
+**Expression Computation Flow:**
+1. Configuration defines expression template and variable list with descriptions
+2. MLLM extracts each variable as a pseudo-entity from document page images
+3. Extracted string values are parsed to numeric, handling currency symbols, commas, and percentage notation
+4. SimpleEval evaluates the template with substituted numeric variable values
+5. Result is formatted according to entity data_type — monetary as $X,XXX.XX, percentage as XX.XX%
+6. FinalEntityValue is produced with full audit trail: template used, variable values, and computed result
+7. Confidence score is derived as the average of component variable extraction confidences
 
-**Example Use Case from Healthcare Domain:**
-A Total Family Deductible entity may not appear explicitly in an SBC document. The document may only show Tier 1 Individual Deductible ($1,500) and Tier 2 Individual Deductible ($2,000) separately. The EXPRESSION configuration computes the combined value (3,500.00 USD) from the two extracted variables, producing a value that can be correctly compared against the Benefit Grid's stated combined deductible.
+**Healthcare Domain Example:**
+A Total Family Deductible entity may not appear explicitly in an SBC document. The document shows Tier 1 Individual Deductible ($1,500) and Tier 2 Individual Deductible ($2,000) separately. The EXPRESSION configuration computes the combined value (3,500.00 USD) from the two extracted variables, producing a value directly comparable against the Benefit Grid's stated combined deductible figure.
+
+**Error Handling:**
+If any required variable value is missing or unparseable, the entity receives ERROR status with a descriptive message identifying the missing variable. The error is recorded in the audit trail without crashing the pipeline. The entity is flagged for human review automatically.
 
 ### 3.7 Section-Wise Semantic Validation Layer
 
-Validation is performed section by section, mirroring the logical structure of the configuration file. This design decision enables:
-- Granular per-section accuracy reporting
-- Logical grouping of related entities for context-aware comparison
-- Parallel processing potential in future optimization
-- Cleaner audit trails organized by document section
+Validation is performed section by section, mirroring the logical organization of the configuration file. This architectural decision reflects how domain experts naturally review document consistency — by logical grouping, not by isolated entity comparisons.
 
-**Validation Process Per Section:**
+**Why Section-Wise Validation:**
 
-For each section, all entity pairs (value from Doc A, value from Doc B) are passed to the MLLM in a single validation call. The section context — section name, section description — is included in the validation prompt, giving the model the semantic context needed for accurate comparison within that domain section.
+*Context provision:* Validating all deductible-related entities simultaneously gives the MLLM the relational context of how those values interact. An unusual individual deductible value makes more sense when seen alongside the family deductible in the same prompt.
 
-![E2E Design](img/validation%20engine.jpeg)
+*Cost efficiency:* One section-level validation call replaces multiple entity-level calls. For 18 entities across 5 sections, this reduces validation API calls from 18 to 5 — a 72% reduction in the validation stage.
 
-**Chain-of-Thought Reasoning Steps:**
-The validation prompt guides the MLLM through a structured reasoning sequence:
-
-1. **Normalization:** Convert both values to canonical form by stripping currency symbols, standardizing units, converting percentage formats, and resolving common abbreviations.
-2. **Semantic Alignment Check:** Determine whether normalized values express the same underlying fact, accounting for paraphrase equivalence (e.g., "No charge" = "Covered in full"), unit equivalence, and abbreviation expansion.
-3. **Discrepancy Analysis:** If values differ after normalization, classify the discrepancy type: NUMERIC_DIFFERENCE, TERMINOLOGY_VARIANT, COVERAGE_RECLASSIFICATION, or FORMAT_DIFFERENCE.
-4. **Status Assignment:** Assign MATCH, MISMATCH, PARTIAL_MATCH, or INELIGIBLE.
-5. **Confidence Calibration:** Express a confidence score from 0.0 to 1.0 reflecting certainty in the decision.
+*Structured reporting:* Section-wise organization of the output report mirrors how benefits administrators and compliance officers review SBC accuracy, making the output immediately interpretable to domain users.
 
 **Rule-Based Pre-Normalization (Fast Path):**
-Before invoking the MLLM for validation, a rule-based normalizer handles common format equivalences deterministically:
-- Monetary: "$1,500" → "1500.00 USD", "1500" → "1500.00 USD"
-- Percentage: "20%" → "20.0%", "0.20" → "20.0%"
-- Coverage equivalents: "No charge" → "0.00 USD", "Covered in full" → "0.00 USD", "Not covered" → "MEMBER_PAYS_100_PERCENT"
+Before any MLLM validation call, a rule-based normalizer processes all value pairs in the section deterministically:
 
-If both values normalize to the same canonical form via the rule-based path, a MATCH is returned immediately without an MLLM call — saving API cost for the most common case.
+- Monetary normalization: "$1,500" → "1500.00 USD", "1500" → "1500.00 USD", "$1,500.00" → "1500.00 USD"
+- Percentage normalization: "20%" → "20.0%", "0.20" → "20.0%", "20 percent" → "20.0%"
+- Coverage equivalents: "No charge" → "0.00 USD", "Covered in full" → "0.00 USD", "Fully covered" → "0.00 USD", "Not covered" → "MEMBER_PAYS_100_PERCENT", "Member pays 100%" → "MEMBER_PAYS_100_PERCENT"
 
+Entity pairs where both values normalize to the same canonical form are immediately recorded as MATCH without an MLLM call. This fast path handles a significant portion of matches in practice — format-only differences between SBC and Benefit Grid representations — at zero additional API cost.
+
+**Chain-of-Thought Validation Prompt:**
+For entity pairs that are not resolved by pre-normalization, a single section-level CoT validation prompt is constructed containing all remaining entity pairs for that section along with their normalized values, entity descriptions, and section context. The MLLM is guided through a five-step reasoning sequence:
+
+1. **Normalization Review:** Verify and refine the pre-normalized values, catching any cases the rule-based normalizer missed.
+2. **Semantic Alignment Check:** Determine whether normalized values express the same underlying fact, explicitly accounting for paraphrase equivalence, unit equivalence, and abbreviation expansion.
+3. **Discrepancy Analysis:** For differing values, classify the discrepancy type — NUMERIC_DIFFERENCE, TERMINOLOGY_VARIANT, COVERAGE_RECLASSIFICATION, or FORMAT_DIFFERENCE.
+4. **Status Assignment:** Assign MATCH, MISMATCH, PARTIAL_MATCH, or INELIGIBLE for each entity pair.
+5. **Confidence Calibration:** Express a per-entity confidence score from 0.0 to 1.0.
+
+The full reasoning chain is preserved in the output for every entity, providing a completely auditable decision trail.
+
+**Per-Entity Validation Output:**
+Each entity in the final validation report contains:
+- Entity name and section membership
+- Raw value from Document A and Document B
+- Normalized values after pre-processing
+- Validation status: MATCH, MISMATCH, PARTIAL_MATCH, or INELIGIBLE
+- Discrepancy type if status is MISMATCH or PARTIAL_MATCH
+- Full Chain-of-Thought reasoning text
+- Confidence score
+- Human review flag
+- Source evidence: page number, region description, raw surrounding context
+- Expression audit trail for EXPRESSION entities: template, variable values, computed result
+![E2E Design](img/validation%20engine.jpeg)
 ---
 
 ## 4. Configuration File Design
 
-The YAML configuration file is the central control artifact of the CMSVS system. Its structure directly drives the behavior of every pipeline layer.
+The YAML configuration file is the central control artifact of the CMSVS system. Its structure directly drives the behavior of every pipeline layer — from retrieval query construction to MLLM prompt content to validation context.
 
 ### 4.1 Configuration Schema
 
-Each configuration file contains:
+**Top-Level Metadata:**
+Configuration name, version identifier, and domain label used for logging and report headers.
 
-**Top-Level Metadata:** Configuration name, version, and domain identifier.
+**Sections Array:**
+Each section defines a logical group of entities corresponding to a functional section of the document type being validated. Each section contains:
+- `section_name` — Canonical identifier used in retrieval queries and report organization
+- `section_description` — Natural language description providing semantic context for both retrieval and validation
+- `section_keywords` — Domain-specific terms that anchor the dense retrieval query for this section
+- `entities` — Array of entity definitions belonging to this section
 
-**Sections Array:** Each section defines a logical group of related entities corresponding to a section of the document being validated. Each section contains:
-- `section_name`: Canonical identifier
-- `section_description`: Natural language description of the section's content
-- `section_keywords`: List of terms for BM25 retrieval boosting
-- `entities`: Array of entity definitions
+**Entity Definition:**
+Each entity contains:
+- `entity_name` — Canonical identifier that must match the M2 ground truth JSON entity keys exactly
+- `entity_description` — Natural language description used in MLLM extraction and validation prompts
+- `entity_extraction_logic` — Either DIRECT (extract as-is) or EXPRESSION (compute from variables)
+- `entity_example_value` — Representative format example for MLLM output calibration
+- `data_type` — One of: monetary, percentage, coverage_classification, text
+- `expression_template` — (EXPRESSION only) Mathematical formula referencing variable names
+- `expression_variables` — (EXPRESSION only) Mapping of variable name to description and example
 
-**Entity Definition:** Each entity contains:
-- `entity_name`: Canonical identifier (must match M2 ground truth JSON keys)
-- `entity_description`: Natural language description for MLLM context
-- `entity_extraction_logic`: Either DIRECT or EXPRESSION
-- `entity_example_value`: Representative example for format context
-- `data_type`: monetary, percentage, coverage_classification, or text
-- `expression_template`: (EXPRESSION only) Mathematical formula using variable names
-- `expression_variables`: (EXPRESSION only) Map of variable name to description and example
+**Validation Settings:**
+Global confidence threshold, list of high-stakes entities requiring cross-verification, and human review escalation configuration.
 
-**Validation Settings:** Confidence threshold, list of high-stakes entities requiring cross-verification, and human review escalation settings.
+### 4.2 Healthcare SBC Configuration Structure
 
-### 4.2 Healthcare SBC Configuration
+The primary test configuration covers 18 entities across 5 sections, directly corresponding to the M2 ground truth JSON annotation files:
 
-The primary test configuration for this project covers 18 entities across 5 sections, directly corresponding to the M2 ground truth JSON annotation files:
-
-| Section | Entity Count | Contains EXPRESSION |
-|---|---|---|
-| Deductibles | 4 | Yes (combined family deductible) |
-| Out-of-Pocket Maximums | 3 | Yes (combined OOP calculation) |
-| Copayments and Coinsurance | 5 | No |
-| Prescription Drug Costs | 4 | Yes (effective monthly drug cost) |
-| Coverage Classifications | 2 | No |
+| Section | Entities | EXPRESSION Entities | Section Keywords |
+|---|---|---|---|
+| Deductibles | 4 | 1 (combined family) | deductible, before your plan pays, annual |
+| Out-of-Pocket Maximums | 3 | 1 (combined OOP) | out-of-pocket, maximum, limit, stop-loss |
+| Copayments and Coinsurance | 5 | 0 | copay, coinsurance, specialist, emergency, primary care |
+| Prescription Drug Costs | 4 | 1 (monthly effective cost) | prescription, drug, formulary, generic, brand |
+| Coverage Classifications | 2 | 0 | covered, not covered, prior authorization |
 
 ---
 
@@ -294,48 +324,19 @@ The primary test configuration for this project covers 18 entities across 5 sect
 
 ### 5.1 Complete Component Stack
 
-| Component | Selected Tool | Provider | Cost | Justification |
+| Component | Selected Tool | Provider | Cost | Primary Justification |
 |---|---|---|---|---|
-| LLM Inference (Primary) | llama-3.3-70b-versatile | Groq API (Free) | $0 | Highest free-tier throughput, strong instruction following |
-| LLM Inference (Secondary) | meta/llama-3.1-70b-instruct | NVIDIA NIM (Free) | $0 | Reliable fallback, enterprise-grade hosting |
-| Dense Embeddings | llama-3.2-nemoretriever-300m-embed-v1 | NVIDIA NIM (Free) | $0 | Retrieval-optimized, 300M parameters, free tier |
-| Keyword Retrieval | BM25Okapi | rank_bm25 (local) | $0 | No API, exact term matching |
-| Vector Store | ChromaDB (in-memory) | Local | $0 | No server, no persistence, per-document temp store |
-| OCR | PaddleOCR Mobile | Local | $0 | Fast CPU inference, sufficient for indexing |
-| PDF Processing | PyMuPDF (fitz) | Local | $0 | Fast, no dependencies, handles malformed PDFs |
+| LLM Inference (Primary) | llama-3.3-70b-versatile | Groq API (Free) | $0 | Highest free-tier throughput via LPU, strong JSON reliability |
+| LLM Inference (Extended Context) | mixtral-8x7b-32768 | Groq API (Free) | $0 | 32K context window for dense multi-column pages |
+| LLM Inference (Fallback) | meta/llama-3.1-70b-instruct | NVIDIA NIM (Free) | $0 | Independent infrastructure fallback |
+| Dense Embeddings | llama-3.2-nemoretriever-300m-embed-v1 | NVIDIA NIM (Free) | $0 | Retrieval-optimized training, 300M parameters, free tier |
+| Vector Store | ChromaDB (in-memory) | Local | $0 | No server, temporary per-document, cosine similarity |
+| OCR | PaddleOCR Mobile | Local | $0 | Fast CPU inference, sufficient for semantic indexing |
+| PDF Processing | PyMuPDF (fitz) | Local | $0 | Fast, dependency-free, handles malformed PDFs |
 | Expression Evaluation | SimpleEval | Local | $0 | Safe sandboxed evaluation, prevents code injection |
-| Configuration Parsing | PyYAML | Local | $0 | Standard YAML parsing |
+| Configuration Parsing | PyYAML + jsonschema | Local | $0 | Standard YAML parsing with schema validation |
 
-**Total Inference Cost: $0 (all free-tier or local)**
-
-### 5.2 Why Groq as Primary LLM Provider
-
-Groq was selected as the primary LLM provider for the following reasons:
-
-**Speed:** Groq's LPU (Language Processing Unit) architecture delivers inference speeds of 500-800 tokens per second, compared to 30-80 tokens per second for GPU-based APIs. For a pipeline that makes 5-10 LLM calls per document pair, this reduces total pipeline latency significantly.
-
-**Free Tier Generosity:** Groq's free tier provides sufficient requests per minute and tokens per day for the full 20-document-pair evaluation dataset in M4/M5 without hitting rate limits.
-
-**Model Quality:** Groq hosts Llama 3.3 70B and Mixtral 8x7B, both of which demonstrate strong instruction-following capability and reliable JSON output generation.
-
-**No Cost at Project Scale:** The volume of API calls required for this project — approximately 200 section-level extraction calls and 200 section-level validation calls across all 20 document pairs — falls well within Groq's free tier limits.
-
-### 5.3 Why NVIDIA NIM for Embeddings
-
-The llama-3.2-nemoretriever-300m-embed-v1 model was selected for dense embeddings because it is specifically optimized for retrieval tasks, unlike general-purpose embedding models. It was trained to maximize semantic similarity scores for relevant document passages while maintaining separation for non-relevant passages — precisely the task required for page routing in this pipeline.
-
-At 300M parameters, it is compact enough to inference quickly on NVIDIA's free-tier API without consuming significant compute credits.
-
-### 5.4 Why PaddleOCR Mobile for OCR
-
-The choice of PaddleOCR Mobile is justified by the pipeline's design: OCR output is used only for building the retrieval index, not for final entity extraction. The MLLM reads raw page images for all actual extraction work. Therefore, the OCR quality requirement is moderate — the text needs to contain the right keywords and numbers for BM25 matching, but does not need to perfectly reconstruct the document layout.
-
-PaddleOCR Mobile provides:
-- Local inference (zero API cost)
-- CPU-compatible execution (no GPU dependency)
-- Fast processing (mobile-optimized model weights)
-- Adequate text extraction accuracy for keyword indexing
-- Apache 2.0 license (unrestricted use)
+**Total Inference Cost: $0 across all components**
 
 ---
 
@@ -343,63 +344,50 @@ PaddleOCR Mobile provides:
 
 ### 6.1 PDF Document Processing Flow
 
-**Stage 1 — Document Loading (Local, Free)**
-The PDF is opened using PyMuPDF. Each page is rendered at 150 DPI as an RGB image, base64-encoded, and stored in a PageImageStore keyed by page number. The full image store is held in memory for the duration of document processing.
+**Stage 1 — Document Loading**
+PyMuPDF opens the PDF and renders each page as an RGB image at 150 DPI. Each page image is base64-encoded and stored in a PageImageStore keyed by page number. The complete image store is held in memory for the duration of processing.
 
-**Stage 2 — OCR Processing (Local, Free)**
-PaddleOCR Mobile processes each page image and returns detected text lines with bounding box coordinates. A structured StructuredPage object is constructed for each page containing: raw extracted text, detected section headers (identified by heuristics: short lines, uppercase or title case formatting), detected key-value pairs (Label: Value patterns), and a composite index text combining all of the above in a structured format.
+**Stage 2 — OCR Processing**
+PaddleOCR Mobile processes each page image and returns detected text lines. A StructuredPage object is constructed per page containing raw text, detected section headers, detected key-value pairs, and a composite index text structured as: SECTIONS: [headers] | KEY_VALUES: [pairs] | [full raw text]. The structured format prioritizes high-signal content at the beginning of the index text.
 
-**Stage 3 — Dual Index Construction (Local, Free)**
-The index text from all StructuredPage objects is indexed in two ways simultaneously: BM25Okapi for keyword matching and NVIDIA NemoRetriever embeddings for semantic matching via ChromaDB. A page-index mapping is maintained to translate array positions back to page numbers.
+**Stage 3 — Dense Vector Index Construction**
+Each page's composite index text is embedded via the NVIDIA NIM NemoRetriever API. The resulting vectors are stored in an in-memory ChromaDB collection with page number metadata. The collection persists only for the duration of the document's processing and is explicitly destroyed afterward to free memory.
 
-**Stage 4 — Section-Wise RAG Routing (Local + NVIDIA NIM Free)**
-For each section in the configuration file, a retrieval query is built from section name, keywords, entity names, descriptions, and example values. Hybrid BM25 + dense retrieval is executed, scores are fused via RRF, and the top-2 page numbers are returned. Embedding API calls use the NVIDIA NIM free tier.
+**Stage 4 — Section-Wise Dense Retrieval**
+For each section in the configuration, a retrieval query is built from section name, keywords, entity names, descriptions, and example values. The query is embedded using the same NemoRetriever model, ensuring query and document vectors share the same semantic space. ChromaDB performs cosine similarity search and returns the top-2 page numbers.
 
-**Stage 5 — Section-Wise MLLM Extraction (Groq Free)**
-The page images identified by RAG routing are fetched from the PageImageStore and passed to the MLLM along with all entity definitions for the current section. Both DIRECT entities and EXPRESSION variable pseudo-entities are extracted in a single call. The MLLM returns a structured JSON object with extracted values, source page citations, source region descriptions, and confidence scores.
+**Stage 5 — Section-Wise MLLM Extraction**
+The identified page images are fetched from the PageImageStore. A unified extraction prompt is built containing all entity definitions for the section — both DIRECT entities and EXPRESSION variable pseudo-entities — labeled clearly to distinguish their roles. The MLLM processes the page images visually and returns a structured JSON extraction result for all entities in a single call.
 
-**Stage 6 — Expression Computation (Local, Free)**
-For EXPRESSION entities, the extracted variable values are parsed to numeric format, substituted into the expression template, and evaluated by SimpleEval. The computed result is formatted according to the entity's data_type and wrapped in a FinalEntityValue object with a full audit trail.
+**Stage 6 — Expression Computation**
+For EXPRESSION entities, extracted variable values are parsed to numeric, evaluated by SimpleEval against the configured template, and formatted into final FinalEntityValue objects with complete audit trails.
 
-**Stage 7 — Low-Confidence Fallback (Groq Free)**
-Any entity with extraction confidence below 0.75 triggers a fallback: the retriever is expanded to top-4 pages and extraction is retried. Entities remaining below threshold after fallback are flagged for human review.
+**Stage 7 — Low-Confidence Fallback**
+Entities with extraction confidence below 0.75 trigger expanded retrieval to top-4 pages and extraction retry. Entities remaining below threshold after fallback are flagged for human review.
 
 ### 6.2 Image Document Processing Flow
 
-**Stage 1 — Image Loading (Local, Free)**
-The image file is opened using PIL, converted to RGB, and base64-encoded. A single-element PageImageStore is created with page_number=1.
+**Stage 1 — Image Loading**
+PIL opens the image file, converts it to RGB, and base64-encodes it. A single-element PageImageStore is created with page_number=1. No OCR, no indexing, and no retrieval is performed.
 
-**Stage 2 — Direct MLLM Extraction (Groq Free)**
-All sections in the configuration are processed against the single image. For each section, the image is passed directly to the MLLM with all section entity definitions. No OCR, no indexing, no retrieval is performed.
+**Stage 2 — Direct MLLM Extraction**
+All configuration sections are processed against the single image. For each section, the image is passed to the MLLM alongside all section entity definitions. The MLLM extracts all entities visually in one call per section.
 
-**Stage 3 — Expression Computation (Local, Free)**
-Identical to the PDF path — SimpleEval handles EXPRESSION entities regardless of input type.
+**Stage 3 — Expression Computation**
+Identical to the PDF path. SimpleEval handles EXPRESSION entities regardless of input type.
 
 ### 6.3 Section-Wise Validation Flow
 
 After extraction is complete for both documents, validation proceeds section by section:
 
-**For each section:**
-1. Collect all entity value pairs (Doc A value, Doc B value) for entities in this section
-2. Apply rule-based pre-normalization to all values
-3. Check for exact matches after normalization — record MATCH without MLLM call
-4. For remaining non-exact pairs, build a single section-level CoT validation prompt including: section context, all entity pairs, entity descriptions, normalized values
-5. Call MLLM (Groq) with the section validation prompt
-6. Parse structured JSON response with per-entity MATCH/MISMATCH/PARTIAL_MATCH/INELIGIBLE status, reasoning chain, and confidence score
-7. Flag any entity with validation confidence below threshold for human review
-8. Append section validation results to the cumulative ValidationReport
-
-**Output per entity in the validation report:**
-- Entity name and section membership
-- Raw value from Doc A and Doc B
-- Normalized values
-- Validation status
-- Discrepancy type (if mismatch)
-- Full Chain-of-Thought reasoning
-- Confidence score
-- Human review flag
-- Extraction audit trail (source page, source region, raw context)
-- Expression audit trail (template, variable values, computed result — for EXPRESSION entities)
+1. Collect all entity value pairs for the current section from Doc A and Doc B extractions
+2. Apply rule-based pre-normalization to all value pairs in the section
+3. Identify pairs where both normalized values are identical — record MATCH without MLLM call
+4. Build a single section-level CoT validation prompt for all remaining non-exact pairs, including section context, entity descriptions, raw values, and normalized values
+5. Submit the section validation prompt to Groq (primary) or NVIDIA NIM (fallback)
+6. Parse the structured JSON response containing per-entity status, discrepancy classification, reasoning chain, and confidence score
+7. Flag entities with validation confidence below threshold for human review
+8. Append section results to the cumulative ValidationReport
 
 ---
 
@@ -431,7 +419,7 @@ cmsvs/
 │   │   └── ocr_engine.py
 │   ├── retrieval/
 │   │   ├── index_builder.py
-│   │   └── hybrid_retriever.py
+│   │   └── dense_retriever.py
 │   ├── config/
 │   │   └── config_parser.py
 │   ├── prompts/
@@ -471,7 +459,7 @@ cmsvs/
 │   ├── test_config_parser.py
 │   ├── test_ocr_engine.py
 │   ├── test_index_builder.py
-│   ├── test_hybrid_retriever.py
+│   ├── test_dense_retriever.py
 │   ├── test_expression_evaluator.py
 │   ├── test_mllm_extractor.py
 │   ├── test_semantic_validator.py
@@ -494,53 +482,47 @@ cmsvs/
 
 ### 8.1 Why MLLM Over Traditional OCR + NLP Pipeline
 
-Traditional document intelligence pipelines convert PDFs to text using OCR, then apply NLP models to the extracted text. This approach has well-documented failure modes that were directly observed during M2 dataset preparation:
+Traditional document intelligence pipelines convert PDFs to text via OCR and apply NLP models to the extracted text. This approach has well-documented failure modes directly observed during M2 dataset preparation:
 
-**Column Interleaving:** Multi-column SBC PDFs processed by standard PDF text extraction libraries produce interleaved column content where text from adjacent columns is concatenated in reading order, garbling the logical structure of table rows.
+**Column Interleaving:** Multi-column SBC PDFs processed by standard text extraction libraries produce interleaved content where adjacent column text is concatenated in reading order, completely garbling table row logic and cell-to-header mappings.
 
-**Spatial Context Loss:** OCR-to-text conversion discards the spatial relationships between document elements. The fact that a value appears in the "In-Network" column versus the "Out-of-Network" column is lost when the document is represented as a flat text stream.
+**Spatial Context Loss:** OCR-to-text conversion discards spatial relationships between document elements. Whether a value appears in the "In-Network" or "Out-of-Network" column — a critical semantic distinction for healthcare validation — is lost when the document is flattened to a text stream.
 
-**Table Structure Degradation:** Complex nested tables in SBC documents — where a single cell may contain multiple network tier values — are not reconstructable from flat OCR text.
+**Table Structure Degradation:** Complex nested tables in SBC documents where a single cell contains multiple network tier values are not reconstructable from flat OCR text output.
 
-The MLLM approach processes document pages as visual artifacts, preserving all spatial, structural, and visual context. The model uses column positions, table borders, font hierarchies, and spatial proximity as semantic signals in the same way a human reader would.
+The MLLM approach processes document pages as visual artifacts, preserving all spatial, structural, and visual context. The model uses column positions, table borders, font hierarchies, and spatial proximity as semantic signals, exactly as a human reader would.
 
-### 8.2 Why RAG for Page Routing
+### 8.2 Why Dense-Only Retrieval
 
-A common alternative to RAG-assisted routing is simply passing all pages to the MLLM for every extraction call. This is functionally correct but economically impractical at scale.
+The decision to use purely dense vector retrieval — without a keyword component — is justified by the nature of the retrieval task in this system.
 
-For a 20-page SBC document with 18 entities extracted section-wise (5 sections):
+The primary challenge is semantic bridging: entity descriptions written in the configuration file use natural language that may share little or no vocabulary with the actual document text. A configuration entity described as "the annual amount a member must pay before insurance coverage begins" must route to a page containing "deductible" — a domain term absent from the description entirely. Dense retrieval handles this naturally because embedding models encode meaning rather than surface tokens.
 
-- **Naive approach:** 5 section calls × 20 pages × 1,500 tokens/page = 150,000 tokens per document
-- **RAG-routed approach:** 5 section calls × 2 pages × 1,500 tokens/page = 15,000 tokens per document
-- **Savings:** 90% token reduction per document
+Furthermore, the downstream MLLM performs visual extraction directly from page images. This means the retrieval layer only needs to get the right page into scope — it does not need to extract precise values itself. Dense retrieval's semantic matching is entirely sufficient for this page-routing role. Any edge cases where pure dense retrieval might miss a relevant page are caught by the fallback mechanism that expands from top-2 to top-4 pages on low extraction confidence.
 
-At 20 document pairs with 2 documents each, this represents 40 documents total. The RAG approach uses 600,000 tokens versus the naive approach's 6,000,000 tokens — a difference that becomes significant at enterprise scale.
+The choice of llama-3.2-nemoretriever-300m-embed-v1 specifically amplifies this advantage: unlike general-purpose embedding models, it is trained with a retrieval objective that directly optimizes for the query-document relevance task this pipeline requires.
 
-### 8.3 Why Hybrid BM25 + Dense Retrieval
+### 8.3 Why Section-Wise Processing Throughout
 
-Neither BM25 nor dense retrieval alone is sufficient for this task:
+The section-wise design principle applies to both extraction and validation stages and delivers consistent benefits across both:
 
-**BM25 alone fails when:** Entity labels use different terminology in the query versus the document. For example, querying for "cost-sharing" when the document uses "member responsibility" — BM25 finds no keyword overlap despite semantic equivalence.
+**For Extraction:** Grouping related entities means the MLLM receives a coherent set of entity targets that are likely co-located in the same document section. This improves extraction accuracy because the model has relational context — knowing it is extracting deductible amounts gives it semantic grounding for interpreting ambiguous values.
 
-**Dense retrieval alone fails when:** Exact numeric values need to be matched. For example, querying for "$525 copay" requires the retrieval of a page that literally contains "$525" — dense embeddings may retrieve semantically similar pages about copays that have different amounts.
+**For Validation:** Comparing all deductible entities as a group gives the MLLM the relational context needed for accurate semantic judgments. An individual deductible of $1,500 paired with a family deductible of $3,000 is a standard 1:2 ratio that a section-aware model recognizes as internally consistent, providing confidence calibration context unavailable in isolated entity comparison.
 
-The hybrid approach with RRF fusion captures the strengths of both: BM25 handles exact term and numeric matching; dense retrieval handles semantic equivalence across terminology variants. The RRF fusion prevents either signal from dominating, producing consistently more accurate page routing than either method alone.
+**For Cost:** Section batching reduces both extraction API calls and validation API calls by a factor of N_entities / N_sections — approximately 72% in the 18-entity, 5-section healthcare configuration.
 
-### 8.4 Why Section-Wise Validation
+### 8.4 Why SimpleEval for Expression Entities
 
-Validation is performed section by section rather than entity by entity for three reasons:
+Python's built-in `eval()` is functionally equivalent to SimpleEval for arithmetic expressions but presents an unacceptable enterprise security risk. In a system designed for regulated industries where configuration files are authored by domain experts without security review, a malformed expression template could execute arbitrary system commands. SimpleEval's strict operator and function whitelist eliminates this attack surface entirely while preserving full arithmetic capability for all legitimate expression patterns encountered in insurance document validation.
 
-**Context Provision:** When validating five entities in the "Deductibles" section simultaneously, the MLLM has the full context of how deductible values relate to each other. An inconsistency in one entity may provide context for understanding another. Entity-level validation in isolation loses this relational context.
+### 8.5 Why Groq as Primary LLM Provider
 
-**Cost Reduction:** A single section-level validation call replacing five entity-level calls reduces MLLM calls by 80% in the validation stage alone.
+The selection of Groq over alternatives is driven by two factors that directly impact project feasibility:
 
-**Structured Reporting:** Section-wise organization of the output report mirrors how benefits administrators and compliance officers actually review SBC accuracy — by section, not by individual entity in isolation.
+**Speed:** Groq's LPU architecture delivers 500–800 tokens per second, making section-batched extraction and validation calls return in seconds rather than tens of seconds. For an iterative development and evaluation workflow, this latency advantage compounds significantly across hundreds of test runs.
 
-### 8.5 Why SimpleEval for Expression Entities
-
-Python's built-in `eval()` function can evaluate mathematical expressions but poses a critical security risk: a malformed or malicious expression template could execute arbitrary system commands. In an enterprise deployment where configuration files may be authored by domain experts rather than security-reviewed engineers, this risk is unacceptable.
-
-SimpleEval provides identical arithmetic evaluation capability with a strict whitelist of permitted operations. It cannot import modules, access file systems, execute system commands, or perform any operation outside its defined safe function set. For an enterprise compliance system, this safety guarantee is non-negotiable.
+**Free Tier Capacity:** Groq's free tier provides sufficient daily token volume to run the complete 20-document-pair evaluation dataset — approximately 200 extraction calls and 100 validation calls — without hitting quota limits. This enables uninterrupted M4 experimentation without cost management overhead.
 
 ---
 
@@ -548,93 +530,93 @@ SimpleEval provides identical arithmetic evaluation capability with a strict whi
 
 ### 9.1 Per-Document-Pair Cost Estimate
 
-| Stage | Tool | API Calls | Estimated Cost |
+| Stage | Tool | API Calls per Pair | Estimated Cost |
 |---|---|---|---|
-| OCR (PDF path) | PaddleOCR Mobile (local) | 0 | $0.00 |
-| Embeddings | NVIDIA NIM (free tier) | 20–40 per doc | $0.00 |
-| RAG Routing | Local BM25 + ChromaDB | 0 | $0.00 |
-| MLLM Extraction | Groq (free tier) | 5–10 per doc | $0.00 |
-| MLLM Validation | Groq (free tier) | 5 per pair | $0.00 |
-| Expression Eval | SimpleEval (local) | 0 | $0.00 |
+| OCR (PDF path) | PaddleOCR Mobile — local | 0 | $0.00 |
+| Dense Embeddings | NVIDIA NIM free tier | 40–80 per document | $0.00 |
+| Dense Retrieval | ChromaDB — local | 0 | $0.00 |
+| MLLM Extraction | Groq free tier | 5–10 per document | $0.00 |
+| MLLM Validation | Groq free tier | 5 per pair | $0.00 |
+| Expression Evaluation | SimpleEval — local | 0 | $0.00 |
 | **Total per pair** | | | **$0.00** |
 
 ### 9.2 Full Evaluation Dataset Cost
 
-| Dataset | Pairs | Estimated Cost |
+| Dataset | Document Pairs | Estimated Cost |
 |---|---|---|
 | Healthcare SBC–Benefit Grid | 20 | $0.00 |
 | FUNSD Augmented Samples | Multiple | $0.00 |
-| **Total M4/M5 Evaluation** | | **$0.00** |
+| **Total M4 and M5 Evaluation** | | **$0.00** |
 
-The entire project evaluation runs at zero API cost by leveraging free tiers exclusively. This validates the CMSVS cost-efficiency claim from M1 and demonstrates that the architecture can operate at research scale without any financial barrier.
+### 9.3 Competitive Cost Comparison
 
-### 9.3 Comparison with Baseline Approaches
-
-| Approach | Cost per 1,000 Pages | Training Data | Deployment Time |
+| Solution | Cost per 1,000 Pages | Training Data Required | Deployment Time |
 |---|---|---|---|
-| Microsoft Azure Document Intelligence | ~$180 | 5+ labeled samples | 2–4 weeks |
+| Microsoft Azure Document Intelligence | ~$180 | 5+ labeled samples per template | 2–4 weeks |
 | AWS Textract + Custom Model | ~$150–$200 | Labeled dataset | 2–4 weeks |
 | Fine-tuned Open Source NER | ~$100–$300 | Large annotated corpus | 4–12 weeks |
 | Manual Human Validation | $500–$2,000+ | N/A | N/A |
-| **CMSVS (Free-Tier Stack)** | **~$0–$5** | **Zero** | **< 2 hours** |
+| **CMSVS — Free-Tier Stack** | **~$0** | **Zero** | **Under 2 hours** |
 
 ---
 
 ## 10. Validation Scenarios Coverage
 
-The architecture handles all six validation scenario types identified in M2:
+The architecture handles all six validation scenario types established in M2:
 
-| Scenario | Architectural Handler |
-|---|---|
-| Exact Match | Rule-based normalizer fast path |
-| Semantic Equivalence | CoT MLLM validation with coverage equivalents mapping |
-| Numeric Normalization | Rule-based normalizer (monetary, percentage standardization) |
-| OCR Noise Handling | Direct image input path bypasses OCR entirely |
-| Conflict Detection | CoT MLLM discrepancy analysis with NUMERIC_DIFFERENCE classification |
-| Coverage Change Detection | CoT MLLM categorical reasoning with COVERAGE_RECLASSIFICATION classification |
+| Scenario | M2 Augmentation Category | Architectural Handler |
+|---|---|---|
+| Exact Match | Unaugmented pairs | Rule-based normalizer fast path — no MLLM call |
+| Semantic Equivalence | Category 1 — Paraphrase changes | CoT MLLM with coverage equivalents mapping |
+| Numeric Normalization | Category 2 — Format changes | Rule-based normalizer (monetary and percentage standardization) |
+| OCR Noise Handling | FUNSD augmentation | Image direct path bypasses OCR for extraction entirely |
+| Conflict Detection | Category 3 — Value conflicts | CoT MLLM discrepancy analysis — NUMERIC_DIFFERENCE classification |
+| Coverage Change Detection | Category 4 — Classification changes | CoT MLLM categorical reasoning — COVERAGE_RECLASSIFICATION classification |
 
 ---
 
 ## 11. Risks and Mitigations
 
-| Risk | Likelihood | Impact | Mitigation Strategy |
+| Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Groq free tier rate limits during batch evaluation | Medium | Medium | Implement exponential backoff retry logic; batch document pairs with inter-call delays |
-| NVIDIA NIM free tier embedding quota exhaustion | Low | Medium | Cache embeddings per document; reuse index across multiple queries for the same document |
-| PaddleOCR Mobile misses section headers in noisy scans | Medium | Low | OCR only feeds RAG indexing; MLLM reads raw images for extraction — OCR quality does not affect extraction accuracy |
-| MLLM JSON schema violations in extraction response | High | High | Implement retry with explicit schema re-instruction; fallback response for persistent failures |
-| RAG routes to wrong pages for ambiguous section content | Medium | High | Two-stage fallback: expand to top-4 pages on low confidence; human review queue as final safety net |
-| SimpleEval expression template errors from config authoring | Low | Medium | Config validator checks expression syntax at parse time before any API calls |
-| Multi-page entity spanning across page boundaries | Low | High | Page aggregation logic selects top-2 pages by RRF score; fallback expands to top-4 to capture spanning entities |
+| Groq free tier rate limit during batch evaluation | Medium | Medium | Exponential backoff retry; inter-call delay between document pairs |
+| NVIDIA NIM embedding quota exhaustion | Low | Medium | Embeddings computed once per document and cached for all section queries |
+| Dense retrieval routes to wrong page for ambiguous content | Medium | High | Fallback expands to top-4 pages on low confidence; human review queue as final safety net |
+| PaddleOCR Mobile produces poor index text for noisy scans | Medium | Low | MLLM reads raw images for extraction — OCR quality only affects retrieval index, not extracted values |
+| MLLM JSON schema violations in extraction response | High | High | Retry up to three times with explicit schema re-instruction; fallback null response on persistent failure |
+| SimpleEval expression template errors from config authoring | Low | Medium | Config validator checks expression syntax at parse time before any API calls are made |
+| Entity spanning multiple pages not captured by top-2 retrieval | Low | High | Fallback expansion to top-4 pages captures most spanning cases; human review catches remainder |
+| NVIDIA NIM embedding API latency causing slow indexing | Low | Low | Embeddings are batched per document; latency is a one-time cost before the extraction phase begins |
 
 ---
 
 ## 12. Connection to Subsequent Milestones
 
-### Milestone 4 (Model Training / Experiments)
+### Milestone 4 — Model Training and Experiments
 
-The M3 architecture establishes the following experimentally configurable parameters for M4:
+The M3 architecture exposes the following experimentally configurable parameters for M4 systematic evaluation:
 
-- **LLM provider:** Groq vs NVIDIA NIM — accuracy and latency comparison
-- **LLM model:** llama-3.3-70b-versatile vs mixtral-8x7b — quality tradeoff analysis
-- **Retrieval top-k:** top-2 vs top-3 vs top-4 pages — recall vs cost tradeoff
-- **Confidence threshold:** 0.70 vs 0.75 vs 0.80 — precision vs recall tradeoff
-- **Prompt variants:** extraction prompt template A vs B — extraction accuracy comparison
-- **Validation granularity:** section-wise vs entity-wise — accuracy vs cost analysis
+- **LLM model selection:** llama-3.3-70b-versatile vs mixtral-8x7b — extraction accuracy and JSON reliability comparison
+- **LLM provider:** Groq primary vs NVIDIA NIM primary — latency and accuracy tradeoff measurement
+- **Retrieval top-K:** top-2 vs top-3 vs top-4 — recall improvement vs token cost tradeoff analysis
+- **Confidence threshold:** 0.70 vs 0.75 vs 0.80 — precision vs recall tradeoff for human escalation
+- **Extraction prompt variants:** template A vs template B — systematic prompt quality comparison
+- **Validation granularity:** section-wise vs entity-wise — accuracy and cost measurement
 
-All parameters are configurable via the pipeline initialization without code changes, making M4 experimentation a configuration exercise rather than a development exercise.
+All parameters are controlled via pipeline initialization arguments requiring no code changes, making M4 a configuration-driven experimentation exercise.
 
-### Milestone 5 (Model Evaluation)
+### Milestone 5 — Model Evaluation and Analysis
 
-The M3 output schema is designed to enable direct comparison against M2 ground truth JSON files. Each output validation report contains the same entity names, expected status fields, and augmentation metadata as the M2 ground truth, enabling automated computation of:
-- Per-entity precision, recall, and F1-score
-- Per-scenario-type accuracy (exact match, semantic equivalence, numeric normalization, conflict detection, coverage change)
+The M3 output JSON schema is designed for direct comparison against M2 ground truth files. Entity names, status fields, and augmentation metadata are aligned, enabling automated computation of:
+- Precision, recall, and F1-score per entity
+- Per-scenario-type accuracy — exact match, semantic equivalence, numeric normalization, conflict detection, coverage reclassification
 - Per-section validation accuracy
-- Human review escalation rate (proxy for system confidence calibration quality)
+- Human review escalation rate as a proxy for system confidence calibration quality
+- Retrieval accuracy — percentage of cases where the correct page was in the top-2 retrieved results
 
-### Milestone 6 (Deployment)
+### Milestone 6 — Deployment and Documentation
 
-The pipeline's CLI entry point (`scripts/run_pipeline.py`) accepts standard arguments for doc_a_path, doc_b_path, config_path, and output_path, making it directly wrappable as a REST API endpoint or Gradio/Streamlit demo interface for the M6 deployment milestone.
+The CLI entry point at `scripts/run_pipeline.py` accepts standard arguments for doc_a_path, doc_b_path, config_path, and output_path. This interface wraps directly as a REST API endpoint or Gradio demo interface for the M6 deployment milestone without architectural modification.
 
 ---
 
@@ -642,10 +624,10 @@ The pipeline's CLI entry point (`scripts/run_pipeline.py`) accepts standard argu
 
 | Member | Milestone 3 Contributions |
 |---|---|
-| **Karthik Ganesh** (21f2000775) | Retrieval layer architecture (IndexBuilder, HybridRetriever with RRF fusion); MLLM client abstraction (Groq and NVIDIA NIM integration); API provider evaluation and selection; retrieval accuracy testing and demo notebook |
-| **Mayank Dode** (22f1000781) | Input routing layer (InputHandler, PDF and image loading); OCR engine (PaddleOCR Mobile integration); PageImageStore design and implementation; input handling unit tests |
-| **Ayush Verma** (21f3000500) | NER prompt engineering (DIRECT and EXPRESSION variable prompts); MLLM extractor (section-batched extraction); expression evaluator (SimpleEval integration); expression orchestrator; extraction unit tests |
-| **Mallesh Mayara** (21f2001118) | Configuration architecture (CMSVSConfigParser, EntityConfig, SectionConfig); YAML config files (healthcare SBC and FUNSD); shared type contracts; report generator; milestone documentation, Validation architecture (section-wise SemanticValidator, CoT prompt builder, ValueNormalizer); pipeline integration (PDFPipeline, ImagePipeline, CMSVSPipeline master orchestrator); end-to-end testing and demo notebooks |
+| **Karthik Ganesh** (21f2000775) | Dense retrieval architecture design and implementation (IndexBuilder with ChromaDB, DenseRetriever with NemoRetriever embeddings); MLLM client abstraction for Groq and NVIDIA NIM APIs; API provider evaluation and selection rationale; retrieval quality testing and demo notebook |
+| **Mayank Dode** (22f1000781) | Input routing layer (InputHandler for PDF and image detection); OCR engine (PaddleOCR Mobile integration); PageImageStore design; document processor for DPI-controlled PDF rendering; input handling unit tests |
+| **Ayush Verma** (21f3000500) | NER prompt engineering for DIRECT and EXPRESSION variable extraction; MLLM extractor with section-batched extraction; expression evaluator with SimpleEval integration; expression orchestrator wiring MLLM to SimpleEval; extraction unit tests |
+| **Mallesh Mayara** (21f2001118) | Configuration architecture (CMSVSConfigParser, EntityConfig dataclasses, SectionConfig); healthcare SBC and FUNSD YAML configuration files; shared type contracts (shared_types.py); report generator; JSON schema definitions; milestone documentation, Section-wise semantic validation architecture (SemanticValidator, CoT validation prompt builder, ValueNormalizer rule engine); pipeline integration (PDFPipeline, ImagePipeline, CMSVSPipeline master orchestrator); end-to-end testing; demo notebooks |
 
 ---
 
@@ -654,22 +636,27 @@ The pipeline's CLI entry point (`scripts/run_pipeline.py`) accepts standard argu
 Milestone 3 has been successfully completed. The following deliverables were produced:
 
 **Completed Architecture Objectives:**
-- ✅ Model architecture selected — full component stack defined with justification for every selection
-- ✅ Architecture justified — comparative analysis against alternatives provided for all major decisions
-- ✅ End-to-end setup — complete pipeline from document input to validation report specified and implemented
+- ✅ Model architecture selected — complete component stack defined with justification for every selection decision
+- ✅ Architecture justified — comparative analysis provided for all major design choices including dense-only retrieval, section-wise processing, MLLM visual extraction, and free-tier provider selection
+- ✅ End-to-End setup — complete pipeline from raw document input to structured validation JSON report specified and implemented
 
 **Key Architectural Innovations:**
-- ✅ RAG-assisted page routing — 90% token reduction versus naive full-document approach
-- ✅ Zero-cost inference stack — Groq free tier + NVIDIA NIM free tier + local tools
-- ✅ EXPRESSION entity support — SimpleEval enables computed entity values with full audit trail
-- ✅ Section-wise validation — context-aware comparison mirroring document logical structure
-- ✅ Dual input support — PDF with full RAG pipeline, Image with direct MLLM path
-- ✅ Hybrid retrieval — BM25 + NemoRetriever dense embeddings with RRF fusion
+- ✅ Dense RAG page routing — NVIDIA NemoRetriever embeddings route MLLM calls to relevant pages only, achieving 90% token reduction
+- ✅ Zero-cost inference stack — Groq free tier for LLM, NVIDIA NIM free tier for embeddings, PaddleOCR Mobile locally for OCR
+- ✅ EXPRESSION entity support — SimpleEval enables mathematically derived entity values with full audit trail and security isolation
+- ✅ Section-wise extraction and validation — context-aware processing mirroring document logical structure with 72% API call reduction
+- ✅ Dual input support — PDF with full RAG pipeline, Image with direct MLLM visual path
+- ✅ Complete hallucination control architecture — evidence grounding, schema enforcement, null-returning protocol, confidence thresholding, human review escalation
 
-**Prepared for M4:**
-- ✅ All experimentally configurable parameters identified
-- ✅ Pipeline designed for parameter-driven experimentation without code changes
-- ✅ Evaluation metrics and comparison methodology defined against M2 ground truth
+**Alignment with M2 Dataset:**
+- ✅ All six M2 validation scenario types have corresponding architectural handlers
+- ✅ Entity names in configuration files match M2 ground truth JSON keys exactly
+- ✅ Output schema compatible with M5 automated evaluation against M2 ground truth
+
+**Prepared for M4 Experimentation:**
+- ✅ All configurable parameters identified and exposed via pipeline arguments
+- ✅ Experiment design framework documented for M4 systematic evaluation
+- ✅ Evaluation metrics and comparison methodology defined
 
 *Document Version: 1.0 | Milestone: M3 — Model Architecture*
 *Indian Institute of Technology Madras — Deep Learning / Generative AI Course Project*
