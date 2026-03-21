@@ -73,6 +73,8 @@ Layer 5:  MLLM Extraction      — Visual entity extraction from page images
 Layer 6:  Expression Engine    — Compute derived entity values via SimpleEval
 Layer 7:  Section-Wise Validation — CoT semantic comparison per section
 ```
+![E2E Design](img/E2E%20Design.jpeg)
+
 
 ### 3.1 Input Routing Layer
 
@@ -85,6 +87,8 @@ When a PDF file is provided, the system executes the complete pipeline: OCR proc
 When an image file is provided (JPEG, PNG, TIFF, BMP, or WebP), the system bypasses OCR and RAG entirely. The image is loaded, base64-encoded, and passed directly to the MLLM with all section entities extracted in a single call. This path is optimal for single-page documents and scanned form images such as those in the FUNSD dataset.
 
 Both paths produce an identical output structure — a dictionary of FinalEntityValue objects — ensuring the downstream validation layer operates identically regardless of input type.
+
+![E2E Design](img/Components.jpeg)
 
 ### 3.2 OCR Processing Layer
 
@@ -151,6 +155,8 @@ The top-2 pages by fused RRF score are returned as the routing result for each s
 
 **Fallback Mechanism:**
 If the MLLM extraction on the top-2 pages returns a confidence score below 0.75 for any entity, the retriever is queried again with top_k expanded to 4, and extraction is retried on the larger page set. If confidence remains below threshold after fallback, the entity is flagged for human review.
+
+![E2E Design](img/extraction%20fallback%20strategy.jpeg)
 
 ### 3.5 MLLM Extraction Layer
 
@@ -221,6 +227,8 @@ Validation is performed section by section, mirroring the logical structure of t
 **Validation Process Per Section:**
 
 For each section, all entity pairs (value from Doc A, value from Doc B) are passed to the MLLM in a single validation call. The section context — section name, section description — is included in the validation prompt, giving the model the semantic context needed for accurate comparison within that domain section.
+
+![E2E Design](img/validation%20engine.jpeg)
 
 **Chain-of-Thought Reasoning Steps:**
 The validation prompt guides the MLLM through a structured reasoning sequence:
