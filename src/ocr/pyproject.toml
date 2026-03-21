@@ -1,0 +1,21 @@
+[project]
+name = "ml3-deliverable"
+version = "0.1.0"
+description = "Input routing and OCR deliverable"
+readme = "deliverable.md"
+requires-python = "==3.11.14"
+dependencies = [
+    "paddleocr[doc-parser]>=3.4.0",
+    "paddlepaddle>=3.2.1",
+    "pillow>=11.0.0",
+    "pymupdf>=1.26.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
