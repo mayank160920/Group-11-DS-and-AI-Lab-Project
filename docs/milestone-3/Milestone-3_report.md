@@ -173,7 +173,7 @@ The MLLM extraction layer is responsible for visual understanding of document pa
 |---|---|---|---|
 | Groq (Free) | llama-3.3-70b-versatile | Primary extraction and validation | Free tier, exceptionally high throughput via LPU architecture, strong JSON output reliability |
 | Groq (Free) | mixtral-8x7b-32768 | Alternative for long-context pages | Extended context window for dense multi-column pages |
-| NVIDIA NIM (Free) | meta/llama-3.1-70b-instruct | Fallback provider | Independent infrastructure, free tier, strong instruction following |
+| NVIDIA NIM (Free) | meta-llama/Llama-4-Scout-17B-16E | Fallback provider | Independent infrastructure, free tier, strong instruction following |
 
 **Why Groq as Primary Provider:**
 Groq's LPU (Language Processing Unit) architecture delivers inference at 500–800 tokens per second, compared to 30–80 tokens per second for GPU-based API providers. For a pipeline making 5–10 LLM calls per document pair across extraction and validation stages, this speed advantage translates to significantly shorter end-to-end processing time. Groq's free tier provides sufficient daily token allowance to process the full 20-document-pair evaluation dataset without cost.
@@ -328,7 +328,7 @@ The primary test configuration covers 18 entities across 5 sections, directly co
 |---|---|---|---|---|
 | LLM Inference (Primary) | llama-3.3-70b-versatile | Groq API (Free) | $0 | Highest free-tier throughput via LPU, strong JSON reliability |
 | LLM Inference (Extended Context) | mixtral-8x7b-32768 | Groq API (Free) | $0 | 32K context window for dense multi-column pages |
-| LLM Inference (Fallback) | meta/llama-3.1-70b-instruct | NVIDIA NIM (Free) | $0 | Independent infrastructure fallback |
+| LLM Inference (Fallback) | meta-llama/Llama-4-Scout-17B-16E | NVIDIA NIM (Free) | $0 | Independent infrastructure fallback |
 | Dense Embeddings | llama-3.2-nemoretriever-300m-embed-v1 | NVIDIA NIM (Free) | $0 | Retrieval-optimized training, 300M parameters, free tier |
 | Vector Store | ChromaDB (in-memory) | Local | $0 | No server, temporary per-document, cosine similarity |
 | OCR | PaddleOCR Mobile | Local | $0 | Fast CPU inference, sufficient for semantic indexing |
@@ -596,7 +596,7 @@ The architecture handles all six validation scenario types established in M2:
 
 The M3 architecture exposes the following experimentally configurable parameters for M4 systematic evaluation:
 
-- **LLM model selection:** llama-3.3-70b-versatile vs mixtral-8x7b — extraction accuracy and JSON reliability comparison
+- **LLM model selection:** llama-4-Scout vs mixtral-8x7b — extraction accuracy and JSON reliability comparison
 - **LLM provider:** Groq primary vs NVIDIA NIM primary — latency and accuracy tradeoff measurement
 - **Retrieval top-K:** top-2 vs top-3 vs top-4 — recall improvement vs token cost tradeoff analysis
 - **Confidence threshold:** 0.70 vs 0.75 vs 0.80 — precision vs recall tradeoff for human escalation
