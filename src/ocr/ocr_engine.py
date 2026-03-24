@@ -92,12 +92,19 @@ class OCREngine:
         )
 
     def _extract_raw_text(self, result) -> str:
-        # markdown_text = result.markdown["markdown_texts"]
-        # text = self._flatten_text(markdown_text)
-        
         try:
-            text = " ".join(result['rec_texts'])
-            return text
+            if isinstance(result, dict) and "rec_texts" in result:
+                return " ".join(result["rec_texts"])
+
+            markdown = getattr(result, "markdown", None)
+            if isinstance(markdown, dict) and "markdown_texts" in markdown:
+                return self._flatten_text(markdown["markdown_texts"])
+
+            rec_texts = getattr(result, "rec_texts", None)
+            if rec_texts is not None:
+                return " ".join(rec_texts)
+
+            raise TypeError(f"Unsupported OCR result type: {type(result).__name__}")
         except Exception as exc:
             raise ValueError(f"Failed to extract text from OCR result: {exc}") from exc
         
@@ -115,23 +122,23 @@ class OCREngine:
 
         return headers
 
-    def _extract_key_value_pairs(self, raw_text: str) -> dict[str, str]:
-        pairs: dict[str, str] = {}
+    def _extract_key_value_pairs(self, raw_text: str) -> list[tuple[str, str]]:
+        pairs: list[tuple[str, str]] = []
         for key, value in self.KEY_VALUE_PATTERN.findall(raw_text):
             cleaned_key = self._normalize_line(key)
             cleaned_value = " ".join(value.split())
-            pairs[cleaned_key] = cleaned_value
+            pairs.append((cleaned_key, cleaned_value))
         return pairs
 
     def _build_index_text(
         self,
         section_headers: list[str],
-        key_value_pairs: dict[str, str],
+        key_value_pairs: list[tuple[str, str]],
         raw_text: str,
     ) -> str:
         section_text = " | ".join(section_headers) if section_headers else "NONE"
         key_value_text = (
-            " | ".join(f"{key}: {value}" for key, value in key_value_pairs.items())
+            " | ".join(f"{key}: {value}" for key, value in key_value_pairs)
             if key_value_pairs
             else "NONE"
         )

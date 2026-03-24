@@ -65,7 +65,7 @@ def test_structured_page_has_required_fields(tmp_path, monkeypatch) -> None:
     assert page.page_number == 0
     assert isinstance(page.raw_text, str)
     assert isinstance(page.section_headers, list)
-    assert isinstance(page.key_value_pairs, dict)
+    assert isinstance(page.key_value_pairs, list)
     assert isinstance(page.index_text, str)
 
 
@@ -132,6 +132,6 @@ def test_key_value_pairs_extracted(tmp_path, monkeypatch) -> None:
     engine = OCREngine(engine="paddle")
     page = engine.process_pdf(pdf_path)[0]
 
-    assert page.key_value_pairs["Deductible"] == "500"
-    assert page.key_value_pairs["Copay"] == "25"
-    assert page.key_value_pairs["Coinsurance"] == "20%"
+    assert ("Deductible", "500") in page.key_value_pairs
+    assert ("Copay", "25") in page.key_value_pairs
+    assert ("Coinsurance", "20%") in page.key_value_pairs

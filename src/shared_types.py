@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
@@ -30,22 +30,13 @@ class LoadedInput:
     page_images: dict[int, PageImage]
 
 
-class KeyValuePairs(dict[str, str]):
-    def __iter__(self):
-        return iter(self.items())
-
-
 @dataclass(slots=True)
 class StructuredPage:
     page_number: int
-    raw_text: str
-    section_headers: list[str]
-    key_value_pairs: dict[str, str]
-    index_text: str
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.key_value_pairs, KeyValuePairs):
-            object.__setattr__(self, "key_value_pairs", KeyValuePairs(self.key_value_pairs))
+    raw_text: str = ""
+    section_headers: list[str] = field(default_factory=list)
+    key_value_pairs: list[tuple[str, str]] = field(default_factory=list)
+    index_text: str = ""
 
     @property
     def page_num(self) -> int:
