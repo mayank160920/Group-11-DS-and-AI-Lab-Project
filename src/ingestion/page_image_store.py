@@ -50,3 +50,16 @@ class PageImageStore:
             width=image.width,
             height=image.height,
         )
+
+    # Compatibility methods for kartik's rag notebook
+    def get(self, page_num: int) -> str:
+        page_image = self._pages.get(page_num)
+        if page_image is None:
+            raise KeyError(f"Page number {page_num} not found in the store.")
+        return page_image.image_base64
+    
+    def all_pages(self) -> list[int]:
+        return list(self._pages.keys())
+    
+    def page_count(self) -> int:
+        return len(self._pages)
