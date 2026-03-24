@@ -30,6 +30,7 @@ class OCREngine:
         use_doc_orientation_classify: bool = False,
         use_doc_unwarping: bool = False,
         use_textline_orientation: bool = False,
+        use_angle_cls: bool = False,  # Deprecated but included for compatibility
     ) -> None:
         if engine not in self.SUPPORTED_ENGINES:
             supported = ", ".join(sorted(self.SUPPORTED_ENGINES))
@@ -51,6 +52,7 @@ class OCREngine:
         self.use_doc_orientation_classify = use_doc_orientation_classify
         self.use_doc_unwarping = use_doc_unwarping
         self.use_textline_orientation = use_textline_orientation
+        self.use_angle_cls = use_angle_cls
 
     # ---------------------------------------------------------------------
     # Public API
@@ -96,7 +98,7 @@ class OCREngine:
         result = self._get_ocr().predict(image)
 
         lines = self._extract_lines_from_paddle_result(result)
-        raw_text = " ".join(lines).strip()
+        raw_text = "\n".join(lines).strip()
 
         section_headers = self._extract_section_headers(raw_text)
         key_value_pairs = self._extract_key_value_pairs(raw_text)
@@ -143,6 +145,7 @@ class OCREngine:
             use_doc_orientation_classify=self.use_doc_orientation_classify,
             use_doc_unwarping=self.use_doc_unwarping,
             use_textline_orientation=self.use_textline_orientation,
+            use_angle_cls=self.use_angle_cls,  # Deprecated but included for compatibility
             enable_mkldnn=False,  # MKL-DNN can cause issues in some environments, so we disable it by default
         )
 
