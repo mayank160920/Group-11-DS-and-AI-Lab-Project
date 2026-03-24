@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from shared_types import InputType, LoadedInput, PageImage
+from src.shared_types import InputType, LoadedInput, PageImage
 
 
 class ImageLoader:

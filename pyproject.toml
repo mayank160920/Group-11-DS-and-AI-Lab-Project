@@ -5,6 +5,7 @@ description = "Input routing and OCR deliverable"
 readme = "deliverable.md"
 requires-python = "==3.11.14"
 dependencies = [
+    "matplotlib>=3.10.8",
     "paddleocr[doc-parser]>=3.4.0",
     "paddlepaddle>=3.2.1",
     "pillow>=11.0.0",

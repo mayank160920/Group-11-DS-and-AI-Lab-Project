@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ingestion.page_image_store import PageImageStore
-from input.image_loader import ImageLoader
-from shared_types import InputType, LoadedInput
+from src.ingestion.page_image_store import PageImageStore
+from src.input.image_loader import ImageLoader
+from src.shared_types import InputType, LoadedInput
 
 
 class InputHandler:

@@ -7,7 +7,7 @@ from pathlib import Path
 import fitz
 from PIL import Image
 
-from shared_types import PageImage
+from src.shared_types import PageImage
 
 
 class PageImageStore:
