@@ -28,7 +28,8 @@ class OCREngine:
         show_log: bool = False,
         device: str = "cpu",
         use_doc_orientation_classify: bool = False,
-        use_doc_unwarping: bool = False
+        use_doc_unwarping: bool = False,
+        use_textline_orientation: bool = False,
     ) -> None:
         if engine not in self.SUPPORTED_ENGINES:
             supported = ", ".join(sorted(self.SUPPORTED_ENGINES))
@@ -49,12 +50,13 @@ class OCREngine:
         self.device = device
         self.use_doc_orientation_classify = use_doc_orientation_classify
         self.use_doc_unwarping = use_doc_unwarping
+        self.use_textline_orientation = use_textline_orientation
 
     # ---------------------------------------------------------------------
     # Public API
     # ---------------------------------------------------------------------
 
-    def process_pdf(self, pdf_path: str | Path, as_dict: bool = False) -> list[StructuredPage]:
+    def process_pdf(self, pdf_path: str | Path, as_dict: bool = False) -> list[StructuredPage] | dict[int, StructuredPage]:
         """
         Convenience wrapper:
         PDF -> InputHandler -> rendered page images -> OCR per page
@@ -137,8 +139,10 @@ class OCREngine:
         return PaddleOCR(
             device=self.device,
             text_recognition_model_name="PP-OCRv3_mobile_rec",
+            text_detection_model_name="PP-OCRv3_mobile_det",
             use_doc_orientation_classify=self.use_doc_orientation_classify,
             use_doc_unwarping=self.use_doc_unwarping,
+            use_textline_orientation=self.use_textline_orientation,
             enable_mkldnn=False,  # MKL-DNN can cause issues in some environments, so we disable it by default
         )
 
