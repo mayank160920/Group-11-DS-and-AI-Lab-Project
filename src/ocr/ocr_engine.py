@@ -95,8 +95,11 @@ class OCREngine:
         # markdown_text = result.markdown["markdown_texts"]
         # text = self._flatten_text(markdown_text)
         
-        text = " ".join(result['rec_texts'])
-        return text
+        try:
+            text = " ".join(result['rec_texts'])
+            return text
+        except Exception as exc:
+            raise ValueError(f"Failed to extract text from OCR result: {exc}") from exc
         
     def _extract_section_headers(self, raw_text: str) -> list[str]:
         headers: list[str] = []
