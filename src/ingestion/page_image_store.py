@@ -21,7 +21,7 @@ class PageImageStore:
         scale = self.dpi / 72
 
         with fitz.open(path) as document:
-            for page_index, page in enumerate(document, start=1):
+            for page_index, page in enumerate(document):
                 pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
                 image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
                 self._pages[page_index] = self._to_page_image(image=image, page_number=page_index)

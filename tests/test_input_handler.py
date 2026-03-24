@@ -66,7 +66,7 @@ def test_loaded_input_total_pages_for_pdf(tmp_path) -> None:
 
     assert loaded.input_type is InputType.PDF
     assert loaded.total_pages == 3
-    assert sorted(loaded.page_images) == [1, 2, 3]
+    assert sorted(loaded.page_images) == [0, 1, 2]
 
 
 def test_loaded_input_total_pages_for_image(tmp_path) -> None:
@@ -78,4 +78,4 @@ def test_loaded_input_total_pages_for_image(tmp_path) -> None:
 
     assert loaded.input_type is InputType.IMAGE
     assert loaded.total_pages == 1
-    assert sorted(loaded.page_images) == [1]
+    assert sorted(loaded.page_images) == [0]

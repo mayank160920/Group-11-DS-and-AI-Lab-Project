@@ -20,12 +20,12 @@ class ImageLoader:
             if image.width > self.MAX_IMAGE_SIZE[0] or image.height > self.MAX_IMAGE_SIZE[1]:
                 image.thumbnail(self.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
 
-        page_image = self._to_page_image(image=image, page_number=1)
+        page_image = self._to_page_image(image=image, page_number=0)
         return LoadedInput(
             input_type=InputType.IMAGE,
             source_path=path,
             total_pages=1,
-            page_images={1: page_image},
+            page_images={0: page_image},
         )
 
     def _to_page_image(self, image: Image.Image, page_number: int) -> PageImage:

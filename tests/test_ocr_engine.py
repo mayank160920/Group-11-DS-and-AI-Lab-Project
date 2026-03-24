@@ -62,7 +62,7 @@ def test_structured_page_has_required_fields(tmp_path, monkeypatch) -> None:
 
     assert len(pages) == 1
     page = pages[0]
-    assert page.page_number == 1
+    assert page.page_number == 0
     assert isinstance(page.raw_text, str)
     assert isinstance(page.section_headers, list)
     assert isinstance(page.key_value_pairs, dict)

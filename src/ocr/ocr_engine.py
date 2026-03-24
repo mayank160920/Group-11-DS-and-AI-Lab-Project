@@ -46,7 +46,7 @@ class OCREngine:
         pages: list[StructuredPage] = []
         predictions = pipeline.predict(input=str(path))
 
-        for page_number, result in enumerate(predictions, start=1):
+        for page_number, result in enumerate(predictions):
             raw_text = self._extract_raw_text(result)
             section_headers = self._extract_section_headers(raw_text)
             key_value_pairs = self._extract_key_value_pairs(raw_text)
