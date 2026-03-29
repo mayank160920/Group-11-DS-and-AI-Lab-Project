@@ -1,0 +1,13 @@
+.git
+.DS_Store
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+notebooks/
+tests/
+*.pyc
+*.pyo
+*.pyd
+.env

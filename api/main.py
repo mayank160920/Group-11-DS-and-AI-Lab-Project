@@ -90,9 +90,18 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    api_host = os.environ.get("API_HOST", "0.0.0.0")
+    api_port = int(os.environ.get("API_PORT", "8000"))
+    api_reload = os.environ.get("API_RELOAD", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
     uvicorn.run(
         "api.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
+        host=api_host,
+        port=api_port,
+        reload=api_reload,
     )
