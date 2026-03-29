@@ -49,6 +49,42 @@ def api_get(path: str) -> dict | None:
         return None
 
 
+def api_post_json(path: str, payload: dict, timeout: int = 30) -> dict | None:
+    """POST JSON to the API. Returns None on failure."""
+    try:
+        r = requests.post(f"{API_BASE}{path}", json=payload, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as exc:
+        try:
+            detail = exc.response.json().get("detail", str(exc))
+        except Exception:
+            detail = str(exc)
+        st.error(f"API error {exc.response.status_code}: {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Request failed: {exc}")
+        return None
+
+
+def api_delete(path: str) -> dict | None:
+    """DELETE request to the API. Returns None on failure."""
+    try:
+        r = requests.delete(f"{API_BASE}{path}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as exc:
+        try:
+            detail = exc.response.json().get("detail", str(exc))
+        except Exception:
+            detail = str(exc)
+        st.error(f"API error {exc.response.status_code}: {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Request failed: {exc}")
+        return None
+
+
 def api_post_files(
     path: str,
     files: dict,
@@ -620,9 +656,305 @@ def render_api_tab() -> None:
         ("POST", "/extract",      "Extract entities from one document"),
         ("POST", "/validate",     "Validate a document pair (full report)"),
         ("POST", "/validate/gt",  "Validate a document pair (GT format)"),
+        ("POST", "/configs/create", "Create config from field definitions"),
+        ("GET",  "/configs/markdowns", "List saved Markdown configs"),
+        ("GET",  "/configs/{name}/markdown", "Get Markdown extraction file"),
+        ("DELETE", "/configs/{name}", "Delete a config (YAML + Markdown)"),
     ]
     df = pd.DataFrame(endpoints, columns=["Method", "Endpoint", "Description"])
     st.dataframe(df, hide_index=True, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 4: Config Builder — CSV fields → YAML + Markdown
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _empty_field_row() -> dict:
+    """Return a blank field row for the data editor."""
+    return {
+        "field_name": "",
+        "field_description": "",
+        "section": "General",
+        "data_type": "text",
+        "example_value": "",
+        "extraction_logic": "DIRECT",
+        "expression_template": "",
+    }
+
+
+def render_config_builder_tab() -> None:
+    """Render the Config Builder tab for creating extraction configs."""
+    st.header("🛠️ Config Builder")
+    st.caption(
+        "Define extraction fields via form or CSV upload. "
+        "The system generates a YAML config + Markdown extraction instruction file."
+    )
+
+    # ── Sub-tabs: Create / Manage ──────────────────────────────────────────
+    create_tab, manage_tab = st.tabs(["➕ Create Config", "📂 Manage Configs"])
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CREATE CONFIG
+    # ══════════════════════════════════════════════════════════════════════════
+    with create_tab:
+        st.subheader("Define Fields")
+
+        col_meta1, col_meta2 = st.columns(2)
+        with col_meta1:
+            config_name_input = st.text_input(
+                "Config Name",
+                value="",
+                placeholder="e.g. invoice_extraction",
+                help="Unique name (will be converted to snake_case)",
+                key="cb_config_name",
+            )
+        with col_meta2:
+            domain_input = st.text_input(
+                "Domain",
+                value="general",
+                placeholder="e.g. healthcare, finance, legal",
+                key="cb_domain",
+            )
+
+        st.divider()
+
+        # ── Input method selector ──────────────────────────────────────────
+        input_method = st.radio(
+            "Input Method",
+            options=["📝 Manual Form", "📤 CSV Upload"],
+            horizontal=True,
+            key="cb_input_method",
+        )
+
+        fields_data: list[dict] = []
+
+        if input_method == "📤 CSV Upload":
+            st.info(
+                "Upload a CSV with columns: "
+                "`field_name`, `field_description`, `section`, `data_type`, "
+                "`example_value`, `extraction_logic`, `expression_template`  \n"
+                "Only `field_name` is required."
+            )
+            csv_file = st.file_uploader(
+                "Upload CSV",
+                type=["csv"],
+                key="cb_csv_upload",
+            )
+            if csv_file:
+                try:
+                    df_csv = pd.read_csv(csv_file)
+                    if "field_name" not in df_csv.columns:
+                        st.error("CSV must have a `field_name` column.")
+                    else:
+                        # Fill defaults
+                        defaults = {
+                            "field_description": "",
+                            "section": "General",
+                            "data_type": "text",
+                            "example_value": "",
+                            "extraction_logic": "DIRECT",
+                            "expression_template": "",
+                        }
+                        for col, default in defaults.items():
+                            if col not in df_csv.columns:
+                                df_csv[col] = default
+                            else:
+                                df_csv[col] = df_csv[col].fillna(default)
+
+                        st.success(f"Loaded {len(df_csv)} fields from CSV")
+                        st.dataframe(df_csv, use_container_width=True, hide_index=True)
+                        fields_data = df_csv.to_dict("records")
+                except Exception as exc:
+                    st.error(f"Failed to parse CSV: {exc}")
+
+            # Download template
+            template_csv = (
+                "field_name,field_description,section,data_type,"
+                "example_value,extraction_logic,expression_template\n"
+                "invoice_number,Unique invoice identifier,Header,text,INV-001,DIRECT,\n"
+                "total_amount,Total invoice amount,Totals,monetary,$1500.00,DIRECT,\n"
+                "tax_amount,Tax computed from subtotal,Totals,monetary,$150.00,EXPRESSION,"
+                "subtotal * tax_rate\n"
+            )
+            st.download_button(
+                "📥 Download CSV Template",
+                data=template_csv,
+                file_name="cmsvs_fields_template.csv",
+                mime="text/csv",
+            )
+
+        else:
+            # ── Manual form using st.data_editor ───────────────────────────
+            if "cb_fields" not in st.session_state:
+                st.session_state.cb_fields = [_empty_field_row()]
+
+            edited_df = st.data_editor(
+                pd.DataFrame(st.session_state.cb_fields),
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "field_name": st.column_config.TextColumn(
+                        "Field Name *", help="Required. e.g. invoice_number"
+                    ),
+                    "field_description": st.column_config.TextColumn(
+                        "Description", help="What this field represents"
+                    ),
+                    "section": st.column_config.TextColumn(
+                        "Section", help="Logical grouping", default="General"
+                    ),
+                    "data_type": st.column_config.SelectboxColumn(
+                        "Data Type",
+                        options=["text", "monetary", "percentage", "date", "number"],
+                        default="text",
+                    ),
+                    "example_value": st.column_config.TextColumn(
+                        "Example", help="Example expected value"
+                    ),
+                    "extraction_logic": st.column_config.SelectboxColumn(
+                        "Logic",
+                        options=["DIRECT", "EXPRESSION"],
+                        default="DIRECT",
+                    ),
+                    "expression_template": st.column_config.TextColumn(
+                        "Expression", help="Only for EXPRESSION logic"
+                    ),
+                },
+                key="cb_data_editor",
+            )
+
+            # Sync edits back
+            st.session_state.cb_fields = edited_df.to_dict("records")
+            # Filter out empty rows
+            fields_data = [
+                r for r in edited_df.to_dict("records")
+                if r.get("field_name", "").strip()
+            ]
+
+        st.divider()
+
+        # ── Generate button ────────────────────────────────────────────────
+        can_generate = bool(config_name_input and config_name_input.strip() and fields_data)
+
+        if st.button(
+            "🚀 Generate Config & Markdown",
+            type="primary",
+            disabled=not can_generate,
+            use_container_width=True,
+            key="cb_generate_btn",
+        ):
+            payload = {
+                "config_name": config_name_input.strip(),
+                "domain": domain_input.strip() or "general",
+                "fields": [
+                    {
+                        "field_name": f.get("field_name", "").strip(),
+                        "field_description": f.get("field_description", ""),
+                        "section": f.get("section", "General"),
+                        "data_type": f.get("data_type", "text"),
+                        "example_value": str(f.get("example_value", "")),
+                        "extraction_logic": f.get("extraction_logic", "DIRECT"),
+                        "expression_template": f.get("expression_template") or None,
+                    }
+                    for f in fields_data
+                    if f.get("field_name", "").strip()
+                ],
+            }
+
+            with st.spinner("Generating config files…"):
+                result = api_post_json("/configs/create", payload)
+
+            if result:
+                st.success(
+                    f"✅ Config **{result['config_name']}** created! "
+                    f"({result['total_sections']} sections, {result['total_fields']} fields)"
+                )
+
+                # Show Markdown preview
+                st.subheader("📄 Generated Markdown (LLM Extraction Instructions)")
+                st.markdown(result.get("markdown_preview", ""), unsafe_allow_html=False)
+
+                # Download buttons
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    st.download_button(
+                        "⬇️ Download Markdown (.md)",
+                        data=result.get("markdown_preview", ""),
+                        file_name=f"{result['config_name']}.md",
+                        mime="text/markdown",
+                        key="cb_dl_md",
+                    )
+                with col_dl2:
+                    st.download_button(
+                        "⬇️ Download Config Info (JSON)",
+                        data=json.dumps(result, indent=2),
+                        file_name=f"{result['config_name']}_info.json",
+                        mime="application/json",
+                        key="cb_dl_json",
+                    )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # MANAGE CONFIGS (dropdown, preview, delete)
+    # ══════════════════════════════════════════════════════════════════════════
+    with manage_tab:
+        st.subheader("Saved Markdown Configs")
+
+        # Fetch list of markdowns
+        md_list_data = api_get("/configs/markdowns")
+        md_names: list[str] = md_list_data.get("markdowns", []) if md_list_data else []
+
+        if not md_names:
+            st.info(
+                "No saved Markdown configs yet. Use the **Create Config** tab to build one."
+            )
+        else:
+            selected_md = st.selectbox(
+                "Select a Markdown Config",
+                options=md_names,
+                key="cb_manage_select",
+            )
+
+            if selected_md:
+                col_actions = st.columns([1, 1, 2])
+
+                with col_actions[0]:
+                    view_btn = st.button("👁️ View", key="cb_view_btn", use_container_width=True)
+                with col_actions[1]:
+                    delete_btn = st.button(
+                        "🗑️ Delete", key="cb_delete_btn",
+                        type="secondary", use_container_width=True,
+                    )
+
+                if view_btn:
+                    md_detail = api_get(f"/configs/{selected_md}/markdown")
+                    if md_detail:
+                        st.markdown(f"**Config:** `{md_detail['config_name']}`")
+                        st.markdown(
+                            f"**YAML exists:** {'✅' if md_detail['yaml_exists'] else '❌'}"
+                        )
+                        st.divider()
+
+                        # Render the markdown
+                        st.markdown(md_detail["markdown_content"], unsafe_allow_html=False)
+
+                        # Download
+                        st.download_button(
+                            "⬇️ Download Markdown",
+                            data=md_detail["markdown_content"],
+                            file_name=f"{selected_md}.md",
+                            mime="text/markdown",
+                            key="cb_manage_dl",
+                        )
+
+                if delete_btn:
+                    confirm = st.checkbox(
+                        f"Confirm deletion of **{selected_md}** (YAML + Markdown)",
+                        key="cb_delete_confirm",
+                    )
+                    if confirm:
+                        del_result = api_delete(f"/configs/{selected_md}")
+                        if del_result:
+                            st.success(del_result.get("message", "Deleted."))
+                            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -639,9 +971,10 @@ def main() -> None:
 
     settings = render_sidebar()
 
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "🔍 Extract Entities",
         "⚖️ Validate Pair",
+        "🛠️ Config Builder",
         "🔌 API Explorer",
     ])
 
@@ -652,6 +985,9 @@ def main() -> None:
         render_validation_tab(settings)
 
     with tab3:
+        render_config_builder_tab()
+
+    with tab4:
         render_api_tab()
 
 

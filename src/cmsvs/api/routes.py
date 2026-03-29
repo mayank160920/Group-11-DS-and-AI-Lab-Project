@@ -13,14 +13,25 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from api.models import (
+    ConfigCreateRequest,
+    ConfigCreateResponse,
     ConfigDetailResponse,
     ConfigListResponse,
+    DeleteConfigResponse,
     ExtractionResponse,
     GroundTruthResponse,
     HealthResponse,
+    MarkdownDetailResponse,
+    MarkdownListResponse,
     ValidationResponse,
 )
 from api.services import CMSVSService
+from api.config_generator import (
+    create_config_from_fields,
+    delete_config,
+    get_markdown,
+    list_markdowns,
+)
 
 router = APIRouter()
 
@@ -50,6 +61,80 @@ async def list_configs() -> ConfigListResponse:
     """List all available configuration files."""
     svc = get_service()
     return ConfigListResponse(configs=svc.list_configs())
+
+
+# ── Config Builder (CSV fields → YAML + Markdown) ─────────────────────────────
+
+@router.post(
+    "/configs/create",
+    response_model=ConfigCreateResponse,
+    tags=["Config Builder"],
+)
+async def create_config(body: ConfigCreateRequest) -> ConfigCreateResponse:
+    """
+    Create a new YAML config + Markdown extraction instruction file
+    from user-defined fields.
+
+    Accepts a JSON body with config_name, domain, and a list of fields.
+    Each field specifies name, description, section, data_type, etc.
+    """
+    try:
+        return create_config_from_fields(
+            config_name=body.config_name,
+            domain=body.domain,
+            fields=body.fields,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get(
+    "/configs/markdowns",
+    response_model=MarkdownListResponse,
+    tags=["Config Builder"],
+)
+async def list_markdown_configs() -> MarkdownListResponse:
+    """List all saved Markdown extraction config files."""
+    return MarkdownListResponse(markdowns=list_markdowns())
+
+
+@router.get(
+    "/configs/{config_name}/markdown",
+    response_model=MarkdownDetailResponse,
+    tags=["Config Builder"],
+)
+async def get_markdown_config(config_name: str) -> MarkdownDetailResponse:
+    """Get the Markdown extraction instructions for a config."""
+    try:
+        slug, content, yaml_exists = get_markdown(config_name)
+        return MarkdownDetailResponse(
+            config_name=slug,
+            markdown_content=content,
+            yaml_exists=yaml_exists,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.delete(
+    "/configs/{config_name}",
+    response_model=DeleteConfigResponse,
+    tags=["Config Builder"],
+)
+async def delete_config_endpoint(config_name: str) -> DeleteConfigResponse:
+    """Delete both YAML config and Markdown file for a configuration."""
+    try:
+        deleted = delete_config(config_name)
+        # Clear the service config cache for this name
+        svc = get_service()
+        svc._config_cache.pop(config_name, None)
+        return DeleteConfigResponse(
+            config_name=config_name,
+            deleted_files=deleted,
+            message=f"Deleted {len(deleted)} file(s) for '{config_name}'.",
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.get(

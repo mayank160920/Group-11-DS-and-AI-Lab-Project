@@ -152,6 +152,52 @@ class GroundTruthResponse(BaseModel):
     entities: list[GroundTruthEntity]
 
 
+# ── Config Builder (CSV → YAML + Markdown) ──────────────────────────────────────
+
+class FieldDefinition(BaseModel):
+    """A single field/entity the user wants to extract."""
+    field_name: str = Field(..., description="Unique field identifier (snake_case)")
+    field_description: str = Field(default="", description="What this field represents")
+    section: str = Field(default="General", description="Logical grouping / section name")
+    data_type: str = Field(default="text", description="text | monetary | percentage | date | number")
+    example_value: str = Field(default="", description="Example of expected extracted value")
+    extraction_logic: str = Field(default="DIRECT", description="DIRECT | EXPRESSION")
+    expression_template: Optional[str] = Field(default=None, description="Math expression for EXPRESSION fields")
+
+
+class ConfigCreateRequest(BaseModel):
+    """Request body for creating a new config from user-defined fields."""
+    config_name: str = Field(..., description="Unique name for this configuration (no spaces)")
+    domain: str = Field(default="general", description="Domain label (e.g. healthcare, finance)")
+    fields: list[FieldDefinition] = Field(..., min_length=1, description="List of fields to extract")
+
+
+class ConfigCreateResponse(BaseModel):
+    config_name: str
+    yaml_path: str
+    markdown_path: str
+    total_sections: int
+    total_fields: int
+    markdown_preview: str
+
+
+class MarkdownListResponse(BaseModel):
+    """List of saved markdown config files."""
+    markdowns: list[str]
+
+
+class MarkdownDetailResponse(BaseModel):
+    config_name: str
+    markdown_content: str
+    yaml_exists: bool
+
+
+class DeleteConfigResponse(BaseModel):
+    config_name: str
+    deleted_files: list[str]
+    message: str
+
+
 # ── Error ───────────────────────────────────────────────────────────────────────
 
 class ErrorResponse(BaseModel):
