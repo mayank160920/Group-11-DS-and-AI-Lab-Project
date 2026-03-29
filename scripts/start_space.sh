@@ -15,6 +15,10 @@ api_pid=$!
 python3 -m streamlit run streamlit_app/app.py \
   --server.address=0.0.0.0 \
   --server.port="${SPACE_PORT}" \
+  --server.headless=true \
+  --server.enableCORS=false \
+  --server.enableXsrfProtection=false \
+  --server.fileWatcherType=none \
   --browser.gatherUsageStats=false &
 streamlit_pid=$!
 
