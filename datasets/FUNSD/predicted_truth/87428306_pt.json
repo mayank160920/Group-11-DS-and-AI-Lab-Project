@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "COMPOUND PHYSICAL PARAMETERS",
+            "doc_b_value": "Compound Physical Parameters",
+            "normalized_value": "compound physical parameters",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "A221",
+            "doc_b_value": "FORM 6 (RCS)",
+            "normalized_value": "a221",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "870828306",
+            "doc_b_value": "87428309",
+            "normalized_value": "870828306",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "November 28, 1990",
+            "doc_b_value": null,
+            "normalized_value": "november 28, 1990",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": "Dr. P. D. Schickedantz",
+            "doc_b_value": "Dr. P. D. Schickedantz",
+            "normalized_value": "dr. p. d. schickedantz",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "Elizabeth W. Cirode",
+            "doc_b_value": "Elizabeth W. Crouse",
+            "normalized_value": "elizabeth w cirode",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "A221",
+            "doc_b_value": "A-221",
+            "normalized_value": "a221",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "LORILLARD RESEARCH CENTER",
+            "doc_b_value": "Lorillard Research Ctr.",
+            "normalized_value": "lorillard research center",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "0.2",
+            "doc_b_value": null,
+            "normalized_value": "0.2",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "A221",
+            "doc_b_value": "A221",
+            "normalized_value": "a221",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        }
+    ]
+}

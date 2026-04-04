@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "CHANGE OF AUTHORIZED COST",
+            "doc_b_value": "Change of Authorized Cost",
+            "normalized_value": "change of authorized cost",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "681925993",
+            "doc_b_value": "681925993",
+            "normalized_value": "681925993",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "#51",
+            "doc_b_value": "51",
+            "normalized_value": "#51",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "June 21, 1985",
+            "doc_b_value": "06/21/1985",
+            "normalized_value": "june 21, 1985",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "S. J. Curtis",
+            "doc_b_value": "J. E. Cushatt",
+            "normalized_value": "s. j. curtis",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "J. F. Wilhelm",
+            "doc_b_value": "J. E. Cushatt",
+            "normalized_value": "j. f. wilhelm",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": "S. Willinger (3), Bonnie Fuller, V. Hansberry (If International)",
+            "doc_b_value": "S. Willinger (3), Research Group Manager, Bonnie Puller, V. Hansberry (If International)",
+            "normalized_value": "s. willinger (3), bonnie fuller, v. hansberry (if international)",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "RICHLAND 100's",
+            "doc_b_value": "RICHLAND 100's",
+            "normalized_value": "richland 100's",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "1985-39NP",
+            "doc_b_value": "1985-40NP",
+            "normalized_value": "1985-39np",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "Market Facts, Inc.",
+            "doc_b_value": "Market Facts Incorporated",
+            "normalized_value": "market facts, inc.",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        }
+    ]
+}

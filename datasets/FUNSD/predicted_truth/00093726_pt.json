@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "00093726",
+            "doc_b_value": "00093726",
+            "normalized_value": "00093726",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "6030",
+            "doc_b_value": "02:02:06",
+            "normalized_value": "6030",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": "September 21, 1976",
+            "doc_b_value": "September 21, 1976",
+            "normalized_value": "september 21, 1976",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "September 21, 1976",
+            "doc_b_value": "09/21/1976",
+            "normalized_value": "september 21, 1976",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": "Dr. A. W. Spears",
+            "doc_b_value": "Dr. A. W. Spears",
+            "normalized_value": "dr. a. w. spears",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "Dr. A. W. Spears",
+            "doc_b_value": "H. J. Minnemeyer",
+            "normalized_value": "dr. a. w. spears",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "Dr. H. J. Minnemeyer",
+            "doc_b_value": "H. J. Minnemeyer",
+            "normalized_value": "dr. h. j. minnemeyer",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": "Dr. F. J. Schultz, Dr. H. J. Minnemeyer",
+            "doc_b_value": "Dr. H. J. Minnemeyer, Dr. F. J. Schultz",
+            "normalized_value": "dr. f. j. schultz, dr. h. j. minnemeyer",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "6030",
+            "doc_b_value": "#6030",
+            "normalized_value": "6030",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "20,000",
+            "doc_b_value": "500 lbs.",
+            "normalized_value": "20,000",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "PMO",
+            "doc_b_value": "PMO",
+            "normalized_value": "pmo",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        }
+    ]
+}

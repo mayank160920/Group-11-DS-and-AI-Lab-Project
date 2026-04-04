@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "1/4/90",
+            "doc_b_value": "January 4, 1990",
+            "normalized_value": "1990-01-04",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": "J. F. Anders/J. E. Mann",
+            "doc_b_value": "J. F. Anders/J. E. Mann",
+            "normalized_value": "j. f. anders/j. e. mann",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": "RSS, RDC, PHL, PRC, DRB, Records, Project Leader, Other Personnel Assigned",
+            "doc_b_value": "RSS, RDC, PHL, PRC, DRB, Records, Project Leader, Other Personnel Assigned",
+            "normalized_value": "rss, rdc, phl, prc, drb, records, project leader, other personnel assigned",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "J. E. Mann",
+            "doc_b_value": "J. F. Smith",
+            "normalized_value": "j. e. mann",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": null,
+            "doc_b_value": "Marketing",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "BULL DURHAM Full Flavor King Size Cigarettes",
+            "doc_b_value": "Bull Durham FF KS Cigarettes",
+            "normalized_value": "bull durham full flavor king size cigarettes",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "80-FF",
+            "doc_b_value": "BD-XF-90",
+            "normalized_value": "80-ff",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "tar",
+            "doc_b_value": null,
+            "normalized_value": "tar",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        }
+    ]
+}

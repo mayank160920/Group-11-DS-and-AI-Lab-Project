@@ -387,8 +387,8 @@ class CMSVSService:
         import sys
         sys.path.insert(0, str(SRC_DIR))
 
-        from models.nvidia_client import NvidiaEmbeddingClient, NvidiaLLMClient
-        from pipeline.cmsvs_pipeline import CMSVSPipeline
+        from src.models.nvidia_client import NvidiaEmbeddingClient, NvidiaLLMClient
+        from src.pipeline.cmsvs_pipeline import CMSVSPipeline
 
         embedding_client = NvidiaEmbeddingClient(api_key=self._nvidia_key)
         llm_client = NvidiaLLMClient(api_key=self._nvidia_key)

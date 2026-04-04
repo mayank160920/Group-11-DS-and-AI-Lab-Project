@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "PROJECT SHEET",
+            "doc_b_value": "Project Sheet",
+            "normalized_value": "project sheet",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "00860012",
+            "doc_b_value": "00860012",
+            "normalized_value": "00860012",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "4",
+            "doc_b_value": "5",
+            "normalized_value": "4",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "December 13, 1983",
+            "doc_b_value": "12/13/1983",
+            "normalized_value": "1983-12-13",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": "11/18/83",
+            "doc_b_value": "Nov 18, 1983",
+            "normalized_value": "1983-11-18",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": "December 13, 1983",
+            "doc_b_value": "12/13/1983",
+            "normalized_value": "1983-12-13",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": null,
+            "doc_b_value": "David Serota",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": null,
+            "doc_b_value": "DIR. OF LIFE SCIENCES, HEALTH SERVICES, COMPOUND PREP (TOX), SCIENTIFIC RES (TOX), LAB ANIMAL MEDICINE, QUALITY ASSURANCE, CONTRACTS, Sponsor",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "D. Serota",
+            "doc_b_value": "David Serota",
+            "normalized_value": "d. serota",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "D. Serota",
+            "doc_b_value": "David Serota",
+            "normalized_value": "d. serota",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "14-Day Single Dose Subacute Toxicity Study",
+            "doc_b_value": "14-Day Single Dose Subacute Toxicity Study",
+            "normalized_value": "14-day single dose subacute toxicity study",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "642-149",
+            "doc_b_value": "640-149",
+            "normalized_value": "642-149",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "Hazleton Laboratories America, Inc.",
+            "doc_b_value": "Hazleton Labs America Inc.",
+            "normalized_value": "hazleton laboratories america, inc.",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "3212",
+            "doc_b_value": "21,017",
+            "normalized_value": "3212",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "B121",
+            "doc_b_value": "B121",
+            "normalized_value": "b121",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        }
+    ]
+}

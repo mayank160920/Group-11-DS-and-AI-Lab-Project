@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "COMPOUND PHYSICAL PARAMETERS",
+            "doc_b_value": "Compound Physical Parameters",
+            "normalized_value": "compound physical parameters",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "B164",
+            "doc_b_value": "B-164",
+            "normalized_value": "b164",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "00865872",
+            "doc_b_value": "00865899",
+            "normalized_value": "00865872",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "8/22/83",
+            "doc_b_value": "August 22, 1983",
+            "normalized_value": "1983-08-22",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": "Dr. P. D. Schickedantz",
+            "doc_b_value": "Dr. P. D. Schickedantz",
+            "normalized_value": "dr. p. d. schickedantz",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "Amelia Poole",
+            "doc_b_value": "Amelia Poole",
+            "normalized_value": "amelia poole",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "Acute Cardiovascular and Respiratory Effects Study in Beagle Dogs",
+            "doc_b_value": null,
+            "normalized_value": "acute cardiovascular and respiratory effects study in beagle dogs",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "BC20-48",
+            "doc_b_value": "BC20-48",
+            "normalized_value": "bc20-48",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "Lorillard Research Center",
+            "doc_b_value": "Lorillard Research Center",
+            "normalized_value": "lorillard research center",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "1.5",
+            "doc_b_value": "1.5",
+            "normalized_value": "1.5",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "B164",
+            "doc_b_value": "B164",
+            "normalized_value": "b164",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        }
+    ]
+}

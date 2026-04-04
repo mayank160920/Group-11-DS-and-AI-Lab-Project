@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "MARKET RESEARCH AUTHORIZATION",
+            "doc_b_value": "Market Research Authorization",
+            "normalized_value": "market research authorization",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "C-40",
+            "doc_b_value": "C-40",
+            "normalized_value": "c-40",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "465915288",
+            "doc_b_value": "465915288",
+            "normalized_value": "465915288",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": "11/16/87",
+            "doc_b_value": null,
+            "normalized_value": "11/16/87",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "10/9/87",
+            "doc_b_value": "October 9, 1987",
+            "normalized_value": "1987-10-09",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": null,
+            "doc_b_value": "S. H. Trebilcock",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "S. H. Trebilcock",
+            "doc_b_value": "R.J. Spunnon",
+            "normalized_value": "s. h. trebilcock",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "R.J. Spunnun",
+            "doc_b_value": "R.J. Spunnon",
+            "normalized_value": "r.j. spunnun",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": "S. Willinger (3), G. D. Raphael, V. Hansberry (If Int.)",
+            "doc_b_value": "S. Willinger (3), G. D. Raphael, V. Hansberry",
+            "normalized_value": "s. willinger (3), g. d. raphael, v. hansberry (if int.)",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "1987-113CA",
+            "doc_b_value": "1987-113CA",
+            "normalized_value": "1987-113ca",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "Kapuler Market Research",
+            "doc_b_value": "Kapuler Market Research",
+            "normalized_value": "kapuler market research",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "CAPRI Expansion:  California - A&U Wave II",
+            "doc_b_value": "CAPRI Expansion: CA - A&U Wave 2",
+            "normalized_value": "capri expansion: california - a&u wave ii",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": "$70,825 +/- 10%",
+            "doc_b_value": "$70,825 +/- 10%",
+            "normalized_value": "$70,825 +/- 10%",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "1,500",
+            "doc_b_value": "15,000",
+            "normalized_value": "1500",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        }
+    ]
+}

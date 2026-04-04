@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "PURCHASE REQUISITION",
+            "doc_b_value": "Purchase Requisition",
+            "normalized_value": "purchase requisition",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "27407",
+            "doc_b_value": "PO 1534 REV 10/78",
+            "normalized_value": "27407",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "87147607",
+            "doc_b_value": "8714760",
+            "normalized_value": "87147607",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": "December 31, 1988",
+            "doc_b_value": "December 31, 1988",
+            "normalized_value": "december 31, 1988",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "April 19, 1988",
+            "doc_b_value": "04/19/1988",
+            "normalized_value": "april 19, 1988",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": "N. A. Thaggard",
+            "doc_b_value": null,
+            "normalized_value": "n. a. thaggard",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": "Mr. Neil Thaggard",
+            "doc_b_value": "Mr. Neil Thaggard",
+            "normalized_value": "mr. neil thaggard",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "H.J. Minnemeyer",
+            "doc_b_value": "N. A. Thaggard",
+            "normalized_value": "h.j. minnemeyer",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "H.J. Minnemeyer",
+            "doc_b_value": "H. J. MINNEMEYER",
+            "normalized_value": "h.j. minnemeyer",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "Preparation of Smoke Condensate for Mouse Skin Bioassay",
+            "doc_b_value": "Standard Operating Procedure for the Preparation of Smoke Condensate for Mouse Skin Bioassay",
+            "normalized_value": "preparation of smoke condensate for mouse skin bioassay",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "27487",
+            "doc_b_value": "27407",
+            "normalized_value": "27487",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "Piedmont Research Laboratory",
+            "doc_b_value": "Piedmont Research Lab",
+            "normalized_value": "piedmont research laboratory",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": "$1,750",
+            "doc_b_value": "$1,750",
+            "normalized_value": "1750.00 USD",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "10,000",
+            "doc_b_value": "10,000",
+            "normalized_value": "10,000",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "Smoke Condensate",
+            "doc_b_value": "Smoke Condensate",
+            "normalized_value": "smoke condensate",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        }
+    ]
+}

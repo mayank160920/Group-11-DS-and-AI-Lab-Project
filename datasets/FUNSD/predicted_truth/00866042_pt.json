@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "PROJECT SHEET",
+            "doc_b_value": "Project Sheet",
+            "normalized_value": "project sheet",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "642-138",
+            "doc_b_value": "2",
+            "normalized_value": "642-138",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "00866042",
+            "doc_b_value": "980042",
+            "normalized_value": "00866042",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "Oct. 11, 1983",
+            "doc_b_value": "October 11, 1983",
+            "normalized_value": "oct. 11, 1983",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": "9/28/83",
+            "doc_b_value": "1983-09-28",
+            "normalized_value": "9/28/83",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": "Oct. 11, 1983",
+            "doc_b_value": "October 11, 1983",
+            "normalized_value": "oct. 11, 1983",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": null,
+            "doc_b_value": "D. Serota",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": null,
+            "doc_b_value": "Director of Life Sciences, Health Services, Compound Prep (Tox), Scientific Res (Tox), Lab Animal Medicine, QA, Contracts, Sponsor",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": "P. Serota",
+            "doc_b_value": "D. Serota",
+            "normalized_value": "p. serota",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "P. Serota",
+            "doc_b_value": "D. Serota",
+            "normalized_value": "p. serota",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "642-138",
+            "doc_b_value": "642-138",
+            "normalized_value": "642-138",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "Acute Intraperitoneal Toxicity Study in Rats",
+            "doc_b_value": "Acute IP Toxicity Study in Rats",
+            "normalized_value": "acute intraperitoneal toxicity study in rats",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "Hazleton Laboratories America, Inc.",
+            "doc_b_value": "Hazleton Labs America, Inc.",
+            "normalized_value": "hazleton laboratories america, inc.",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "20,845",
+            "doc_b_value": "20,845",
+            "normalized_value": "20,845",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "B166",
+            "doc_b_value": "B166",
+            "normalized_value": "b166",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        }
+    ]
+}

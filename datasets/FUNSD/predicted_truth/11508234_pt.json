@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "466840246",
+            "doc_b_value": "466840246",
+            "normalized_value": "466840246",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "MARKETING RESEARCH AUTHORIZATION",
+            "doc_b_value": "marketing research authorization (domestic)",
+            "normalized_value": "marketing research authorization",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "1995-48D",
+            "doc_b_value": "1995-99X",
+            "normalized_value": "1995-48d",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": "3/31/95",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "March 3, 1995",
+            "doc_b_value": "03/03/1995",
+            "normalized_value": "march 3, 1995",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "A. A. Strobel",
+            "doc_b_value": "A. A. Strobel",
+            "normalized_value": "a. a. strobel",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": "H. Williams",
+            "doc_b_value": "h. williams",
+            "normalized_value": "h. williams",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "Analyst",
+            "doc_b_value": "Analyst Rebecca",
+            "normalized_value": "analyst",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "LUCKY STRIKE QUALITATIVE ADVERTISING RESEARCH - GATEWAY CITIES",
+            "doc_b_value": "LUCKY STRIKE QUALITATIVE ADVERTISING RESEARCH - GATEWAY CITIES",
+            "normalized_value": "lucky strike qualitative advertising research - gateway cities",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "1995-48D",
+            "doc_b_value": "1995-99X",
+            "normalized_value": "1995-48d",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "MARKETING RESEARCH AUTHORI TION",
+            "doc_b_value": "Analytic Insight Incorporated",
+            "normalized_value": "marketing research authori tion",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": "29,500",
+            "doc_b_value": "29,500",
+            "normalized_value": "29500.00 USD",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        }
+    ]
+}

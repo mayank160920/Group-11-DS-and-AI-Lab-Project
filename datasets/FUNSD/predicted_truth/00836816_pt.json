@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "COMPOUND PHYSICAL PARAMETERS",
+            "doc_b_value": "Compound Physical Parameters",
+            "normalized_value": "compound physical parameters",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "FORM B (1) 821",
+            "doc_b_value": "FORM 8 (1 82)",
+            "normalized_value": "form b (1) 821",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "00836616",
+            "doc_b_value": "008368689",
+            "normalized_value": "00836616",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "8/10/82",
+            "doc_b_value": "August 10, 1982",
+            "normalized_value": "1982-08-10",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "W. G. Long",
+            "doc_b_value": null,
+            "normalized_value": "w. g. long",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": "Dr. P. D. Schickedantz",
+            "doc_b_value": "Dr. P. D. Schickedantz",
+            "normalized_value": "dr. p. d. schickedantz",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "W. G. Long",
+            "doc_b_value": "W. G.",
+            "normalized_value": "w. g. long",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": "Lorillard Research Center",
+            "doc_b_value": "Lorillard Research Center",
+            "normalized_value": "lorillard research center",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "Determination of Solubility of Materials for Acute Cardiovascular and Respiratory Effects Study in Beagle Dogs",
+            "doc_b_value": "Acute Cardiovascular and Respiratory Effects Study in Beagle Dogs",
+            "normalized_value": "determination of solubility of materials for acute cardiovascular and respiratory effects study in beagle dogs",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "A30",
+            "doc_b_value": "OR 83-81",
+            "normalized_value": "a30",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "0.5",
+            "doc_b_value": ".5g",
+            "normalized_value": "0.5",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "A30",
+            "doc_b_value": "A30",
+            "normalized_value": "a30",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        }
+    ]
+}

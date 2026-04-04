@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": null,
+            "doc_b_value": "COUPON CODE REGISTRATION FORM",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": null,
+            "doc_b_value": "221782",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": null,
+            "doc_b_value": "93351920",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "May 14, 1992",
+            "doc_b_value": null,
+            "normalized_value": "may 14, 1992",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": "September 1, 1992",
+            "doc_b_value": null,
+            "normalized_value": "september 1, 1992",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": "December 31, 1992",
+            "doc_b_value": null,
+            "normalized_value": "december 31, 1992",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "JESSICA ARATO",
+            "doc_b_value": "Jessica Arato",
+            "normalized_value": "jessica arato",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": "VINCE LOSITO",
+            "doc_b_value": "V. Losito",
+            "normalized_value": "vince losito",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": "K. AUGUSTYN, L. GIORDANO, M. MCGLYNN, S. RAPISARDI",
+            "doc_b_value": "Augustyn K., Giordano L., McGlynn M., Rapisarldi S.",
+            "normalized_value": "k. augustyn, l. giordano, m. mcglynn, s. rapisardi",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": null,
+            "doc_b_value": "Rebecca",
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "414",
+            "doc_b_value": "414",
+            "normalized_value": "414",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "1,221,000",
+            "doc_b_value": "1221000",
+            "normalized_value": "1221000",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": "Free Pack",
+            "doc_b_value": "Complimentary Pack",
+            "normalized_value": "0.00 USD",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        }
+    ]
+}

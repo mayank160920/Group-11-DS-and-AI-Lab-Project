@@ -1,0 +1,164 @@
+{
+    "entities": [
+        {
+            "entity_name": "document_title",
+            "doc_a_value": "PROJECT INITIATION FORM",
+            "doc_b_value": null,
+            "normalized_value": "project initiation form",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_reference_number",
+            "doc_a_value": "PNRM",
+            "doc_b_value": null,
+            "normalized_value": "pnrm",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_stamp_id",
+            "doc_a_value": "ATX02 0226607",
+            "doc_b_value": null,
+            "normalized_value": "atx02 0226607",
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_received",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_issued",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_reported",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "date_expiry",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "document_date",
+            "doc_a_value": "April 30, 1985",
+            "doc_b_value": "04/30/1985",
+            "normalized_value": "april 30, 1985",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "from_person",
+            "doc_a_value": "R. S. Sprinkle, III",
+            "doc_b_value": "R. S. Sprinkle, III",
+            "normalized_value": "r. s. sprinkle, iii",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "to_person",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "primary_signer_name",
+            "doc_a_value": "R. S. Sprinkle, III",
+            "doc_b_value": "R. S. Sprinkle, III",
+            "normalized_value": "r. s. sprinkle, iii",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "project_lead",
+            "doc_a_value": "J. F. Anders",
+            "doc_b_value": "Anders, J. F.",
+            "normalized_value": "j. f. anders",
+            "validation_type": "semantic_match",
+            "validation_result": "match"
+        },
+        {
+            "entity_name": "cc_list",
+            "doc_a_value": "RSS, RDC, PIL, PRC, BXC, Records, Project Leader, Other Personnel Assigned",
+            "doc_b_value": "RSS, RDC, PHL, PRC, BMC, Records, Proj. Leader, Others Assigned",
+            "normalized_value": "rss, rdc, pil, prc, bxc, records, project leader, other personnel assigned",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "source_organisation",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "project_name",
+            "doc_a_value": "PALL MALL Regular Menthol",
+            "doc_b_value": "Pall Mall Reg. Menthol",
+            "normalized_value": "pall mall regular menthol",
+            "validation_type": "semantic_match",
+            "validation_result": "partial_match"
+        },
+        {
+            "entity_name": "project_no_or_code",
+            "doc_a_value": "PNRM",
+            "doc_b_value": "PMRM",
+            "normalized_value": "pnrm",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "final_amount",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "coupon_value",
+            "doc_a_value": null,
+            "doc_b_value": null,
+            "normalized_value": null,
+            "validation_type": "semantic_match",
+            "validation_result": "ineligible"
+        },
+        {
+            "entity_name": "final_volume_or_quantity",
+            "doc_a_value": "84 x 24.9",
+            "doc_b_value": "21-24",
+            "normalized_value": "84 x 24.9",
+            "validation_type": "conflict",
+            "validation_result": "mismatch"
+        },
+        {
+            "entity_name": "compound_name",
+            "doc_a_value": "menthol",
+            "doc_b_value": "menthol",
+            "normalized_value": "menthol",
+            "validation_type": "exact_match",
+            "validation_result": "match"
+        }
+    ]
+}
