@@ -17,9 +17,8 @@ pandas
 streamlit
 
 # OCR / helper integrations referenced by the source tree
-groq
 paddleocr
-pyngrok
+paddlepaddle
 
 # Test / evaluation helper used by tests/test_end_to_end.py
 numpy
