@@ -20,6 +20,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "pyyaml>=6.0.2",
     "requests>=2.33.1",
+    "scikit-learn>=1.8.0",
     "seaborn>=0.13.2",
     "simpleeval>=1.0.7",
     "streamlit>=1.56.0",

@@ -281,20 +281,95 @@ The ValueNormalizer does not cover all phrasings — `"No charge at all"`, `"10 
 
 ## 11. FUNSD Evaluation
 
+To assess validation performance, we evaluate the system under two complementary classification settings. This dual evaluation helps separate **high-level decision reliability** from **fine-grained semantic understanding**.
+
+### Evaluation Setup
+
+- **Verdict (Derived Label):**  
+  A normalized, application-level decision used in downstream workflows:
+  - `match`: Indicates agreement between compared fields  
+    (includes both exact and semantic matches)
+  - `conflict`: Indicates disagreement or inconsistency
+
+- **Category (Fine-Grained Label):**  
+  A more detailed classification used for deeper analysis:
+  - `exact_match`: Identical values
+  - `semantic_match`: Equivalent meaning but not identical representation
+  - `conflict`: Disagreement
+
+### Why Two Evaluation Settings?
+
+- **2-Class (Verdict-based):**
+  - Reflects the **actual production use-case**, where the system must decide whether two fields agree or not.
+  - Prioritizes **decision accuracy and reliability**.
+
+- **3-Class (Category-based):**
+  - Evaluates the model’s ability to **distinguish nuanced agreement types**.
+  - Helps diagnose **failure modes and boundary confusion** (e.g., exact vs semantic).
+
+---
+
+### 11.1 2-Class Evaluation (Verdict: Match vs. Conflict)
+
 | Metric | Value |
-|---|---|
-| Document Pairs Evaluated | 33 |
-| Overall Accuracy | 0.912 |
-| Precision | 0.881 |
-| Recall | 0.863 |
-| F1 Score | 0.872 |
+|---|---:|
+| Samples Evaluated | 279 |
+| Accuracy | 0.8853 |
+| Precision (Weighted Avg) | 0.91 |
+| Recall (Weighted Avg) | 0.89 |
+| F1 Score (Weighted Avg) | 0.89 |
 
-**Key Observations:**
+**Class-wise Performance:**
 
-- FUNSD image inputs use the direct MLLM path (no OCR/retrieval overhead) — producing faster inference at ~12s per pair
-- Entity types with structured labels (stamp_id, dates, project numbers) achieve near-perfect extraction
-- Free-text entities (cc_list, project_name) show lower accuracy due to partial match ambiguity
-- OCR noise injections are handled correctly by the visual MLLM path — confirming the design advantage over text-only pipelines
+| Class | Precision | Recall | F1 Score | Support |
+|---|---:|---:|---:|---:|
+| conflict | 0.56 | 0.79 | 0.66 | 39 |
+| match | 0.96 | 0.90 | 0.93 | 240 |
+
+**Observations:**
+
+- Strong performance at the **verdict level (88.53% accuracy)** confirms reliability for real-world validation decisions.
+- **Match predictions are highly accurate**, with strong precision and recall.
+- **Conflict detection shows lower precision**, indicating some over-flagging of disagreements.
+- Error distribution suggests a **bias toward conservative validation**, favoring conflict when uncertain.
+
+---
+
+### 11.2 3-Class Evaluation (Category: Exact vs. Semantic vs. Conflict)
+
+| Metric | Value |
+|---|---:|
+| Accuracy | 0.7168 |
+| Precision (Weighted Avg) | 0.75 |
+| Recall (Weighted Avg) | 0.72 |
+| F1 Score (Weighted Avg) | 0.71 |
+
+**Class-wise Performance:**
+
+| Class | Precision | Recall | F1 Score | Support |
+|---|---:|---:|---:|---:|
+| conflict | 0.56 | 0.79 | 0.66 | 39 |
+| exact_match | 0.88 | 0.56 | 0.68 | 118 |
+| semantic_match | 0.69 | 0.84 | 0.76 | 122 |
+
+**Observations:**
+
+- Performance drops under stricter classification (**71.68% accuracy**), reflecting the difficulty of fine-grained distinctions.
+- **Semantic matches are well captured (high recall)**, but often absorb exact matches.
+- **Exact matches are under-detected (low recall)** despite high precision.
+- The dominant error mode is **confusion between exact and semantic matches**, not conflict detection.
+- Conflict detection remains **stable and consistent across both setups**.
+
+---
+
+### 11.3 Summary
+
+- The system is **highly reliable for production-level validation decisions** (match vs. conflict).
+- Performance degradation in the 3-class setting is driven by **boundary ambiguity between exact and semantic equivalence**, not by failure in detecting disagreement.
+- The model exhibits:
+  - **Conservative behavior for exact matches** (high precision, low recall)
+  - **Generalization bias toward semantic matches** (high recall)
+- Overall, the pipeline is well-suited for **coarse validation tasks**, with clear opportunities to improve **fine-grained equivalence calibration**.
 
 ---
 
@@ -330,7 +405,7 @@ Based on error analysis, the following targeted improvements are recommended for
 
 | Member | Milestone 5 Contributions |
 |---|---|
-| **Mayank Dode** (22f1000781) | Batch pipeline runner for all 8 SBC pairs; document pair collection and preprocessing; system output file generation; FUNSD pipeline execution |
+| **Mayank Dode** (22f1000781) | Batch pipeline runner for all FNUSD pairs; document pair collection and preprocessing; system output file generation |
 | **Ayush Verma** (21f3000500) | Ablation experiment execution (top-K and threshold); token consumption profiling; extraction error analysis and root cause attribution |
 | **Karthik Ganesh** (21f2000775) | Entity name mapper (GT ↔ config alignment); evaluation metrics computation; per-scenario and per-entity analysis; dense retrieval ablation design |
 | **Mallesh Mayara** (21f2001118) | Evaluation notebook and scripts; aggregate metrics computation; error table construction; per-section analysis; visualization figures; M5 report documentation |
