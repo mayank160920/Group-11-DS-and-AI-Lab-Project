@@ -84,6 +84,9 @@ class ExtractionResponse(BaseModel):
     found_count: int
     review_count: int
     processing_time_s: float
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_cost: float = 0.0
     entities: dict[str, ExtractedEntity]
 
 
@@ -102,6 +105,8 @@ class ValidationEntityResult(BaseModel):
     confidence: float = 0.0
     review_required: bool = False
     fast_path_match: bool = False
+    
+
 
 
 class ValidationSectionResult(BaseModel):
@@ -120,6 +125,9 @@ class ValidationSummary(BaseModel):
     review_required: int
     fast_path_matches: int
     sections_processed: int
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_cost: float = 0.0
 
 
 class ValidationResponse(BaseModel):
@@ -204,3 +212,27 @@ class ErrorResponse(BaseModel):
     error: str
     detail: str
     job_id: Optional[str] = None
+
+# [Add new Pydantic models for Fine-Tune Entities endpoints]
+
+class SectionListResponse(BaseModel):
+    sections: list[str]
+
+class EntityListResponse(BaseModel):
+    entities: list[EntityInfo]
+
+class EntityUpdate(BaseModel):
+    entity_name: str
+    entity_description: str
+    entity_example_value: str
+
+class EntitiesPatchRequest(BaseModel):
+    updates: list[EntityUpdate]
+
+class PatchResponse(BaseModel):
+    message: str
+    backup_path: str
+
+class PreviewResponse(BaseModel):
+    processing_time_s: float
+    entities: list[ExtractedEntity]

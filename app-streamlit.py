@@ -1,1046 +1,2745 @@
 """
-CMSVS Workflow App — End-to-End Document Validation
-Combines RAG Input Routing (app.py) + CMSVS Validation (validation_app.py)
-into a single guided workflow.
+streamlit_app/app.py
+---------------------
+Streamlit frontend for the CMSVS API.
 
-Install deps:
-    pip install streamlit pymupdf pillow anthropic
+Run with:
+    streamlit run streamlit_app/app.py
 
-Optional OCR:
-    pip install pytesseract        # + install Tesseract binary
-    pip install paddlepaddle paddleocr  # heavier, more accurate
-
-Run:
-    streamlit run workflow_app.py
+Expects the FastAPI backend running at:
+    http://localhost:8000
 """
+from __future__ import annotations
 
-import base64
-import io
+import io, os
 import json
-import os
-import re
-import tempfile
 import time
-from dataclasses import dataclass, field
-from enum import Enum
+from typing import Any
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
+import pandas as pd
+import requests
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
 
-# ════════════════════════════════════════════════════════
-#  Domain types
-# ════════════════════════════════════════════════════════
+# ── Config ─────────────────────────────────────────────────────────────────────
 
-class InputType(Enum):
-    PDF   = "pdf"
-    IMAGE = "image"
-
-class ValidationStatus(Enum):
-    MATCH          = "MATCH"
-    MISMATCH       = "MISMATCH"
-    PARTIAL_MATCH  = "PARTIAL_MATCH"
-    INELIGIBLE     = "INELIGIBLE"
-
-class DiscrepancyType(Enum):
-    NUMERIC_DIFFERENCE        = "NUMERIC_DIFFERENCE"
-    TERMINOLOGY_VARIANT       = "TERMINOLOGY_VARIANT"
-    COVERAGE_RECLASSIFICATION = "COVERAGE_RECLASSIFICATION"
-    FORMAT_DIFFERENCE         = "FORMAT_DIFFERENCE"
-
-@dataclass
-class PageImage:
-    page_number: int
-    image: Image.Image
-    base64_data: str = ""
-
-@dataclass
-class LoadedInput:
-    input_type: InputType
-    source_path: str
-    total_pages: int
-    page_images: Dict[int, PageImage] = field(default_factory=dict)
-
-@dataclass
-class StructuredPage:
-    page_number: int
-    raw_text: str
-    section_headers: List[str] = field(default_factory=list)
-    key_value_pairs: Dict[str, str] = field(default_factory=dict)
-    index_text: str = ""
-
-@dataclass
-class FinalEntityValue:
-    entity_name: str
-    value: str
-    confidence: float = 1.0
-    status: str = "OK"
-
-@dataclass
-class ValidationResult:
-    entity_name: str
-    value_a: str
-    value_b: str
-    validation_status: ValidationStatus
-    discrepancy_type: Optional[str] = None
-    reasoning: str = ""
-    confidence: float = 1.0
-    requires_human_review: bool = False
-    normalized_a: str = ""
-    normalized_b: str = ""
-    fast_path_used: bool = False
-
-@dataclass
-class ValidationReport:
-    pair_id: str
-    doc_a: str
-    doc_b: str
-    results: List[ValidationResult] = field(default_factory=list)
-    summary: Dict[str, Any] = field(default_factory=dict)
-
-
-# ════════════════════════════════════════════════════════
-#  Input Handling
-# ════════════════════════════════════════════════════════
-
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp"}
-PDF_EXTS   = {".pdf"}
-
-def detect_input_type(path: Path) -> InputType:
-    ext = path.suffix.lower()
-    if ext in PDF_EXTS:   return InputType.PDF
-    if ext in IMAGE_EXTS: return InputType.IMAGE
-    raise ValueError(f"Unsupported format '{ext}'.")
-
-def _img_to_b64(img: Image.Image) -> str:
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode()
-
-def load_pdf(pdf_path: Path, dpi: int = 150) -> LoadedInput:
-    try:
-        import fitz
-    except ImportError:
-        st.error("PyMuPDF not installed. Run: pip install pymupdf")
-        st.stop()
-    doc = fitz.open(str(pdf_path))
-    page_images: Dict[int, PageImage] = {}
-    mat = fitz.Matrix(dpi / 72, dpi / 72)
-    for i, page in enumerate(doc, start=1):
-        pix = page.get_pixmap(matrix=mat)
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        page_images[i] = PageImage(page_number=i, image=img, base64_data=_img_to_b64(img))
-    doc.close()
-    return LoadedInput(InputType.PDF, str(pdf_path), len(page_images), page_images)
-
-def load_image(image_path: Path) -> LoadedInput:
-    img = Image.open(image_path).convert("RGB")
-    if max(img.size) > 4096:
-        img.thumbnail((4096, 4096), Image.LANCZOS)
-    pg = PageImage(1, img, _img_to_b64(img))
-    return LoadedInput(InputType.IMAGE, str(image_path), 1, {1: pg})
-
-def load(path: Path) -> LoadedInput:
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {path}")
-    t = detect_input_type(path)
-    return load_pdf(path) if t == InputType.PDF else load_image(path)
-
-
-# ════════════════════════════════════════════════════════
-#  OCR
-# ════════════════════════════════════════════════════════
-
-def _detect_section_headers(lines: List[str]) -> List[str]:
-    return [l.strip() for l in lines if l.strip() and len(l.strip()) <= 60
-            and (l.strip().isupper() or l.strip().istitle())]
-
-def _detect_key_value_pairs(text: str) -> Dict[str, str]:
-    kv: Dict[str, str] = {}
-    for m in re.finditer(r"([A-Za-z][^\n:]{0,50}):\s*(.+)", text):
-        kv[m.group(1).strip()] = m.group(2).strip()
-    return kv
-
-def _build_index_text(headers: List[str], kv: Dict[str, str], raw: str) -> str:
-    return (f"SECTIONS: {', '.join(headers) or 'NONE'}\n"
-            f"KEY_VALUES: {' | '.join(f'{k}: {v}' for k,v in kv.items()) or 'NONE'}\n"
-            f"RAW_TEXT:\n{raw}")
-
-def ocr_page_text_only(page_img: PageImage) -> StructuredPage:
-    raw_text = ""
-    try:
-        import pytesseract
-        raw_text = pytesseract.image_to_string(page_img.image).strip()
-    except Exception:
-        raw_text = (
-            "CLAIM SUMMARY\nMember Information\n"
-            "Deductible: 500\nCopay: 25\nCoinsurance: 20%\nPlan Type: PPO"
-        )
-    lines   = raw_text.splitlines()
-    headers = _detect_section_headers(lines)
-    kv      = _detect_key_value_pairs(raw_text)
-    idx     = _build_index_text(headers, kv, raw_text)
-    return StructuredPage(page_img.page_number, raw_text, headers, kv, idx)
-
-def ocr_paddle(pdf_path: Path) -> List[StructuredPage]:
-    loaded = load_pdf(pdf_path)
-    try:
-        from paddleocr import PaddleOCR
-        ocr_engine = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
-        pages: List[StructuredPage] = []
-        for pg in loaded.page_images.values():
-            buf = io.BytesIO()
-            pg.image.save(buf, format="PNG")
-            result  = ocr_engine.ocr(buf.getvalue(), cls=True)
-            raw_text = " ".join(
-                line[1][0] for block in (result or [])
-                for line in (block or []) if line and line[1]
-            )
-            lines   = raw_text.splitlines()
-            headers = _detect_section_headers(lines)
-            kv      = _detect_key_value_pairs(raw_text)
-            idx     = _build_index_text(headers, kv, raw_text)
-            pages.append(StructuredPage(pg.page_number, raw_text, headers, kv, idx))
-        return pages
-    except ImportError:
-        return [ocr_page_text_only(pg) for pg in loaded.page_images.values()]
-
-
-# ════════════════════════════════════════════════════════
-#  Value Normalizer
-# ════════════════════════════════════════════════════════
-
-COVERAGE_EQUIVALENTS = {
-    "no charge":        "0.00 USD",
-    "covered in full":  "0.00 USD",
-    "fully covered":    "0.00 USD",
-    "not covered":      "MEMBER_PAYS_100",
-    "member pays 100%": "MEMBER_PAYS_100",
-    "member pays 100":  "MEMBER_PAYS_100",
-}
-
-class ValueNormalizer:
-    def normalize(self, value: str, data_type: str = "auto") -> str:
-        v = value.strip().lower()
-        if v in COVERAGE_EQUIVALENTS:
-            return COVERAGE_EQUIVALENTS[v]
-        if data_type in ("percentage", "auto") and v.endswith("%"):
-            try: return f"{float(v.rstrip('%').replace(',', '')):.1f}%"
-            except ValueError: pass
-        try:
-            fv = float(v.replace(",", ""))
-            if 0 < fv <= 1.0 and data_type == "percentage":
-                return f"{fv * 100:.1f}%"
-        except ValueError: pass
-        clean = re.sub(r"[^\d.]", "", re.sub(r"\$|,", "", v.split()[0]))
-        if clean:
-            try:
-                if data_type in ("monetary", "auto"):
-                    return f"{float(clean):.2f} USD"
-            except ValueError: pass
-        return value.strip()
-
-    def fast_path(self, val_a: str, val_b: str, data_type: str = "auto") -> Optional[bool]:
-        return True if self.normalize(val_a, data_type) == self.normalize(val_b, data_type) else None
-
-
-# ════════════════════════════════════════════════════════
-#  Prompt Builder
-# ════════════════════════════════════════════════════════
-
-class ValidationPromptBuilder:
-    def build_cot_prompt(self, entity_name: str, value_a: str, value_b: str,
-                          data_type: str = "auto", expression_ctx: Optional[Dict] = None) -> str:
-        expr_block = ""
-        if expression_ctx:
-            expr_block = f"\nEXPRESSION CONTEXT:\n  Template : {expression_ctx.get('template','N/A')}\n  Variables: {json.dumps(expression_ctx.get('variables',{}), indent=2)}\n"
-        return f"""You are a healthcare benefits document validator.
-Compare the two extracted values for entity "{entity_name}" and reason step-by-step.
-
-VALUE A: {value_a}
-VALUE B: {value_b}
-DATA TYPE: {data_type}
-{expr_block}
-Steps: Normalize → Compare → Classify discrepancy → Assign status → Rate confidence.
-
-Respond ONLY with valid JSON, no markdown fences:
-{{
-  "entity_name": "{entity_name}",
-  "normalized_value_a": "<canonical form>",
-  "normalized_value_b": "<canonical form>",
-  "validation_status": "MATCH|MISMATCH|PARTIAL_MATCH|INELIGIBLE",
-  "discrepancy_type": null,
-  "reasoning": "<step-by-step chain>",
-  "confidence": 0.0,
-  "requires_human_review": false
-}}"""
-
-
-# ════════════════════════════════════════════════════════
-#  Semantic Validator
-# ════════════════════════════════════════════════════════
-
-class SemanticValidator:
-    def __init__(self, api_key: Optional[str] = None):
-        self.normalizer     = ValueNormalizer()
-        self.prompt_builder = ValidationPromptBuilder()
-        self.api_key        = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-
-    def _call_mllm(self, prompt: str) -> Dict:
-        try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=self.api_key)
-            msg = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = msg.content[0].text.strip()
-            raw = re.sub(r"^```json\s*|```$", "", raw, flags=re.MULTILINE).strip()
-            return json.loads(raw)
-        except Exception as e:
-            return {
-                "entity_name": "unknown", "normalized_value_a": "",
-                "normalized_value_b": "", "validation_status": "MISMATCH",
-                "discrepancy_type": "FORMAT_DIFFERENCE",
-                "reasoning": f"API error: {e}", "confidence": 0.5,
-                "requires_human_review": True,
-            }
-
-    def validate_entity_pair(self, entity_name: str,
-                              val_a: FinalEntityValue, val_b: FinalEntityValue,
-                              data_type: str = "auto") -> Tuple[ValidationResult, bool]:
-        if val_a.status in ("INELIGIBLE", "ERROR") or val_b.status in ("INELIGIBLE", "ERROR"):
-            return ValidationResult(
-                entity_name=entity_name, value_a=val_a.value, value_b=val_b.value,
-                validation_status=ValidationStatus.INELIGIBLE,
-                reasoning="One or both values are INELIGIBLE/ERROR.", confidence=1.0,
-                fast_path_used=True,
-            ), False
-        na = self.normalizer.normalize(val_a.value, data_type)
-        nb = self.normalizer.normalize(val_b.value, data_type)
-        if na == nb:
-            return ValidationResult(
-                entity_name=entity_name, value_a=val_a.value, value_b=val_b.value,
-                validation_status=ValidationStatus.MATCH,
-                reasoning="Exact match after normalization — fast path.",
-                confidence=0.99, normalized_a=na, normalized_b=nb, fast_path_used=True,
-            ), False
-        prompt = self.prompt_builder.build_cot_prompt(entity_name, val_a.value, val_b.value, data_type)
-        resp   = self._call_mllm(prompt)
-        status_map = {s.value: s for s in ValidationStatus}
-        return ValidationResult(
-            entity_name=entity_name, value_a=val_a.value, value_b=val_b.value,
-            validation_status=status_map.get(resp.get("validation_status","MISMATCH"), ValidationStatus.MISMATCH),
-            discrepancy_type=resp.get("discrepancy_type"),
-            reasoning=resp.get("reasoning",""),
-            confidence=float(resp.get("confidence", 0.5)),
-            requires_human_review=bool(resp.get("requires_human_review", False)),
-            normalized_a=resp.get("normalized_value_a", na),
-            normalized_b=resp.get("normalized_value_b", nb),
-            fast_path_used=False,
-        ), True
-
-    def validate(self, extractions_a, extractions_b, pair_id, entity_configs):
-        results = []
-        for cfg in entity_configs:
-            name  = cfg["name"]
-            dtype = cfg.get("data_type", "auto")
-            ev_a  = extractions_a.get(name, FinalEntityValue(name, "N/A", status="INELIGIBLE"))
-            ev_b  = extractions_b.get(name, FinalEntityValue(name, "N/A", status="INELIGIBLE"))
-            r, _  = self.validate_entity_pair(name, ev_a, ev_b, dtype)
-            results.append(r)
-        counts = {s.value: sum(1 for r in results if r.validation_status == s) for s in ValidationStatus}
-        fast   = sum(1 for r in results if r.fast_path_used)
-        return ValidationReport(
-            pair_id=pair_id, doc_a="Doc A", doc_b="Doc B", results=results,
-            summary={"total": len(results), **counts, "fast_path_hits": fast, "mllm_calls": len(results)-fast},
-        )
-
-
-# ════════════════════════════════════════════════════════
-#  Demo helpers
-# ════════════════════════════════════════════════════════
-
-DEMO_ENTITY_CONFIGS = [
-    {"name": "Deductible (Individual)",   "data_type": "monetary"},
-    {"name": "Deductible (Family)",       "data_type": "monetary"},
-    {"name": "Out-of-Pocket Max",         "data_type": "monetary"},
-    {"name": "Emergency Room Copay",      "data_type": "monetary"},
-    {"name": "Coinsurance",               "data_type": "percentage"},
-    {"name": "Urgent Care",               "data_type": "monetary"},
-    {"name": "Preventive Care",           "data_type": "auto"},
-    {"name": "Mental Health (Inpatient)", "data_type": "auto"},
-]
-
-DEMO_PRESETS = {
-    "Mostly Matching (SBC #1)": {
-        "Deductible (Individual)":   ("$1,500",    "1500"),
-        "Deductible (Family)":       ("$3,000",    "$3,000 Family"),
-        "Out-of-Pocket Max":         ("$6,550",    "6550.00"),
-        "Emergency Room Copay":      ("$250 copay","$400 copay"),
-        "Coinsurance":               ("20%",        "0.20"),
-        "Urgent Care":               ("$50",        "50"),
-        "Preventive Care":           ("No charge",  "Covered in Full"),
-        "Mental Health (Inpatient)": ("Not covered","member pays 100%"),
-    },
-    "Many Mismatches (stress test)": {
-        "Deductible (Individual)":   ("$500",   "$1,000"),
-        "Deductible (Family)":       ("$1,500", "$2,500"),
-        "Out-of-Pocket Max":         ("$5,000", "$8,150"),
-        "Emergency Room Copay":      ("$150",   "$350"),
-        "Coinsurance":               ("10%",    "30%"),
-        "Urgent Care":               ("$25",    "$75"),
-        "Preventive Care":           ("$0",     "Not covered"),
-        "Mental Health (Inpatient)": ("$200/day","$350/day"),
-    },
-    "Custom (edit below)": {},
-}
-
-def status_color(s: ValidationStatus) -> str:
-    return {
-        ValidationStatus.MATCH:         "#6ee7b7",
-        ValidationStatus.MISMATCH:      "#f87171",
-        ValidationStatus.PARTIAL_MATCH: "#fbbf77",
-        ValidationStatus.INELIGIBLE:    "#94a3b8",
-    }.get(s, "#e8eaf0")
-
-def status_icon(s: ValidationStatus) -> str:
-    return {ValidationStatus.MATCH:"✓",ValidationStatus.MISMATCH:"✗",
-            ValidationStatus.PARTIAL_MATCH:"~",ValidationStatus.INELIGIBLE:"—"}.get(s,"?")
-
-def make_demo_pdf(path: Path):
-    try:
-        import fitz
-    except ImportError:
-        st.error("PyMuPDF not installed. Run: pip install pymupdf"); st.stop()
-    doc = fitz.open()
-    p1  = doc.new_page()
-    p1.insert_text((72,72), "CLAIM SUMMARY\nMember Information\nDeductible: 500\nCopay: 25\nCoinsurance: 20%\nPlan Type: PPO")
-    p2  = doc.new_page()
-    p2.insert_text((72,72), "BENEFITS\nEmergency Room: 250\nUrgent Care: 50")
-    doc.save(str(path)); doc.close()
-
-def make_demo_image(path: Path):
-    img  = Image.new("RGBA", (320,180), (244,248,255,255))
-    draw = ImageDraw.Draw(img)
-    draw.rectangle((20,20,300,160), outline=(40,70,120), width=3)
-    draw.text((40,70), "Sample image input", fill=(40,70,120))
-    img.save(str(path), format="PNG")
-
-def highlight_numbers(text: str) -> str:
-    return re.sub(r"(\b\d[\d,.$%]+\b)", r'<span class="highlight">\1</span>', text)
-
-
-# ════════════════════════════════════════════════════════
-#  Page Config & CSS
-# ════════════════════════════════════════════════════════
+# API_BASE = "http://localhost:8000"
+API_BASE = os.environ.get("CMSVS_API_URL", "http://localhost:8000").rstrip("/")
+PAGE_TITLE = "CMSVS — Document Validation System"
 
 st.set_page_config(
-    page_title="CMSVS Workflow",
-    page_icon="⚡",
+    page_title=PAGE_TITLE,
+    page_icon="📄",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;600;800&display=swap');
 
-html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
-code, pre, .mono { font-family: 'Space Mono', monospace !important; }
-.stApp { background: #ffffff; color: #0b1220; }
-[data-testid="stSidebar"] { background: #f7f8fa !important; border-right: 1px solid #e6e6e9; }
+# ══════════════════════════════════════════════════════════════════════════════
+# API helpers
+# ══════════════════════════════════════════════════════════════════════════════
 
-h1 { color: #0b3b66 !important; font-weight: 800; letter-spacing: -1.5px; font-size:2rem !important; }
-h2 { color: #0b6a4a !important; font-weight: 600; }
-h3 { color: #334155 !important; font-weight: 600; }
+def api_get(path: str) -> dict | None:
+    """GET request to the API. Returns None on failure."""
+    try:
+        r = requests.get(f"{API_BASE}{path}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception as exc:
+        st.error(f"API error: {exc}")
+        return None
 
-/* ── Step progress bar ── */
-.workflow-steps {
-    display: flex;
-    gap: 0;
-    margin: 1.2rem 0 1.8rem 0;
-    border-radius: 10px;
-    overflow: hidden;
-    border: 1px solid #e6e9ef;
-    background: #fbfdff;
-}
-.wf-step {
-    flex: 1;
-    padding: 0.7rem 0.5rem;
-    text-align: center;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    background: #f3f5f9;
-    color: #334155;
-    border-right: 1px solid #e6e9ef;
-    transition: all 0.2s;
-}
-.wf-step:last-child { border-right: none; }
-.wf-step.active  { background: #eaf6f0; color: #0b6a4a; }
-.wf-step.done    { background: #eef6ff; color: #0b3b66; }
-.wf-step .step-num { font-size: 1.1rem; display: block; margin-bottom: 2px; }
 
-/* ── Cards ── */
-.card {
-    background: #ffffff;
-    border: 1px solid #e6e9ef;
-    border-radius: 12px;
-    padding: 1.2rem 1.5rem;
-    margin-bottom: 1rem;
-}
-.card-green  { border-color: #d1efe0; }
-.card-blue   { border-color: #d9e8f6; }
-.card-purple { border-color: #efe3f8; }
+def api_post_json(path: str, payload: dict, timeout: int = 30) -> dict | None:
+    """POST JSON to the API. Returns None on failure."""
+    try:
+        r = requests.post(f"{API_BASE}{path}", json=payload, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as exc:
+        try:
+            detail = exc.response.json().get("detail", str(exc))
+        except Exception:
+            detail = str(exc)
+        st.error(f"API error {exc.response.status_code}: {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Request failed: {exc}")
+        return None
 
-/* ── Badges ── */
-.badge {
-    display: inline-block;
-    border-radius: 4px;
-    padding: 2px 10px;
-    font-size: 0.75rem;
-    font-family: 'Space Mono', monospace;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    margin-right: 6px;
-}
-.badge-pdf    { background:#eef6ff; color:#0b3b66; border:1px solid #d6e9ff; }
-.badge-image  { background:#faf0ff; color:#3a1a66; border:1px solid #f0d9ff; }
-.badge-ocr    { background:#fff8e6; color:#7a5600; border:1px solid #ffedc2; }
-.badge-MATCH         { background:#eaf8f0; color:#0b7a45; border:1px solid #d1efe0; }
-.badge-MISMATCH      { background:#fff2f2; color:#a12a2a; border:1px solid #ffd6d6; }
-.badge-PARTIAL_MATCH { background:#fff8f0; color:#8a5a1a; border:1px solid #ffefd6; }
-.badge-INELIGIBLE    { background:#f4f6f9; color:#6b7280; border:1px solid #e6e9ef; }
 
-/* ── KV table ── */
-.kv-table { width:100%; border-collapse:collapse; font-size:0.84rem; }
-.kv-table th { background:#f1f5f9; color:#0b3b66; font-family:'Space Mono',monospace;
-               padding:6px 12px; text-align:left; border-bottom:1px solid #e6e9ef; }
-.kv-table td { padding:5px 12px; border-bottom:1px solid #f1f3f6;
-               color:#0b1220; font-family:'Space Mono',monospace; font-size:0.8rem; }
-.kv-table tr:hover td { background:#fbfdff; }
+def api_delete(path: str) -> dict | None:
+    """DELETE request to the API. Returns None on failure."""
+    try:
+        r = requests.delete(f"{API_BASE}{path}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as exc:
+        try:
+            detail = exc.response.json().get("detail", str(exc))
+        except Exception:
+            detail = str(exc)
+        st.error(f"API error {exc.response.status_code}: {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Request failed: {exc}")
+        return None
 
-/* ── Index box ── */
-.index-box {
-    background: #ffffff;
-    border: 1px solid #e6e9ef;
-    border-left: 3px solid #cfeee0;
-    border-radius: 6px;
-    padding: 0.9rem 1.1rem;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.8rem; line-height: 1.7; white-space: pre-wrap;
-    color: #0b1220;
-}
-.highlight { color: #fbbf77; font-weight: 600; }
 
-/* ── Result rows ── */
-.result-row {
-    display: flex; align-items: center; gap: 0.8rem;
-    padding: 0.55rem 0.8rem; border-radius: 8px; margin-bottom: 0.35rem;
-    background: #ffffff; border: 1px solid #e6e9ef; font-size: 0.88rem;
-}
-.result-row:hover { background: #fbfdff; }
-.entity-name { flex: 2; color: #0b3b66; font-weight: 500; }
-.val-a { flex:2; color:#0b66a3; font-family:'Space Mono',monospace; font-size:0.8rem; }
-.val-b { flex:2; color:#d97706; font-family:'Space Mono',monospace; font-size:0.8rem; }
-.status-badge {
-    flex: 1.2; text-align: center; padding: 3px 10px; border-radius: 4px;
-    font-family: 'Space Mono', monospace; font-size: 0.72rem; font-weight: 700;
-}
-.fp-tag   { font-family:'Space Mono',monospace; font-size:0.68rem; color:#065f46;
-            background:#ecfdf3; border:1px solid #d1efe0; border-radius:3px; padding:1px 6px; flex-shrink:0; }
-.mllm-tag { font-family:'Space Mono',monospace; font-size:0.68rem; color:#7a3f00;
-            background:#fff7ed; border:1px solid #ffecd1; border-radius:3px; padding:1px 6px; flex-shrink:0; }
+def api_post_files(
+    path: str,
+    files: dict,
+    data: dict,
+    timeout: int = 300,
+) -> dict | None:
+    """POST multipart/form-data to the API. Returns None on failure."""
+    try:
+        r = requests.post(
+            f"{API_BASE}{path}",
+            files=files,
+            data=data,
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as exc:
+        try:
+            detail = exc.response.json().get("detail", str(exc))
+        except Exception:
+            detail = str(exc)
+        st.error(f"API error {exc.response.status_code}: {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Request failed: {exc}")
+        return None
 
-/* ── Summary grid ── */
-.summary-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:0.6rem; margin:1rem 0; }
-.summary-card { background:#ffffff; border:1px solid #e6e9ef; border-radius:8px; padding:0.8rem; text-align:center; }
-.summary-num  { font-size:1.6rem; font-weight:800; line-height:1; }
-.summary-label{ font-size:0.7rem; color:#64748b; margin-top:3px; font-family:'Space Mono',monospace; }
 
-/* ── CoT box ── */
-.cot-box {
-    background: #ffffff; border:1px solid #e6e9ef; border-left:3px solid #e6e1fb;
-    border-radius:6px; padding:0.9rem 1.1rem; font-family:'Space Mono',monospace;
-    font-size:0.78rem; line-height:1.7; color:#0b1220; white-space:pre-wrap;
-    max-height:240px; overflow-y:auto;
-}
-.norm-pill {
-    display:inline-block; background:#eef6ff; color:#0b3b66; border:1px solid #d6e9ff;
-    border-radius:4px; padding:1px 8px; font-family:'Space Mono',monospace; font-size:0.76rem; margin:2px;
-}
+@st.cache_data(ttl=5, show_spinner=False)
+def _cached_api_get(path: str) -> dict | None:
+    """Fast GET helper for high-rerun UI paths (e.g. sidebar)."""
+    try:
+        r = requests.get(f"{API_BASE}{path}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
 
-/* ── Buttons ── */
-[data-testid="stToolbar"] + div .stButton > button, .stButton > button {
-    background: #0a6a4a !important; color: #ffffff !important;
-    border: 1px solid #0a6a4a !important; border-radius: 6px !important;
-    font-family: 'Space Mono', monospace !important; font-weight: 700 !important;
-}
-.stButton > button:hover { background: #0f7a59 !important; }
-.stTextInput > div > input, .stSelectbox > div {
-    background: #ffffff !important; color: #0b1220 !important;
-    border: 1px solid #e6e9ef !important; font-family: 'Space Mono', monospace !important;
-}
-[data-testid="stFileUploader"] { border: 1px dashed #d6e9ff !important;
-    border-radius: 8px !important; background: #ffffff !important; }
-hr { border-color: #e6e9ef !important; }
-div[data-baseweb="tab"] { font-family: 'Space Mono', monospace !important; }
-</style>
-""", unsafe_allow_html=True)
 
-# Sidebar visibility state (persist in session)
-if "sidebar_collapsed" not in st.session_state:
-    st.session_state["sidebar_collapsed"] = False
+# ══════════════════════════════════════════════════════════════════════════════
+# Sidebar
+# ══════════════════════════════════════════════════════════════════════════════
 
-# If the sidebar is marked collapsed, inject CSS to hide it.
-if st.session_state.get("sidebar_collapsed", False):
-    st.markdown(
-        """
-        <style>
-        [data-testid="stSidebar"] { display: none !important; }
-        /* ensure main content uses full width when sidebar hidden */
-        .css-1y4p8pa { margin-left: 0px !important; }
-        </style>
-        """,
+def render_sidebar() -> dict:
+    """Render sidebar and return user settings."""
+    with st.sidebar:
+        st.title("⚙️ Settings")
+
+        # API health check
+        health = _cached_api_get("/health")
+        if health:
+            if health.get("nvidia_key_set"):
+                st.success("🟢 API Online | NVIDIA Key: Set")
+            else:
+                st.warning("🟡 API Online | NVIDIA Key: Missing")
+        else:
+            st.error("🔴 API Offline — start the FastAPI server")
+
+        st.divider()
+
+        # Config selection
+        configs = []
+        config_data = _cached_api_get("/configs")
+        if config_data:
+            configs = config_data.get("configs", [])
+
+        selected_config = st.selectbox(
+            "Configuration",
+            options=configs,
+            help="Select the entity extraction + validation configuration",
+        )
+
+        confidence = st.slider(
+            "Confidence Threshold",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.75,
+            step=0.05,
+            help="Entities below this threshold are flagged for human review",
+        )
+
+        st.divider()
+
+        # Show config details
+        if selected_config:
+            with st.expander("📋 Config Details", expanded=False):
+                detail = _cached_api_get(f"/configs/{selected_config}")
+                if detail:
+                    st.markdown(f"**Domain:** {detail.get('domain', '')}")
+                    st.markdown(
+                        f"**Sections:** {detail.get('total_sections', 0)} | "
+                        f"**Entities:** {detail.get('total_entities', 0)}"
+                    )
+                    for section in detail.get("sections", []):
+                        st.markdown(f"**{section['section_name']}**")
+                        for e in section["entities"]:
+                            badge = (
+                                "🧮" if e["entity_extraction_logic"] == "EXPRESSION"
+                                else "🔍"
+                            )
+                            st.markdown(
+                                f"&nbsp;&nbsp;{badge} `{e['entity_name']}`",
+                                unsafe_allow_html=True,
+                            )
+
+        st.divider()
+        st.caption("CMSVS v1.0 | NVIDIA NIM Free Tier")
+
+    return {
+        "config_name": selected_config,
+        "confidence": confidence,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 1: Single Document Extraction
+# ══════════════════════════════════════════════════════════════════════════════
+
+def render_extraction_tab(settings: dict) -> None:
+    """Render the single-document extraction tab."""
+    st.header("🔍 Extract Entities")
+    st.caption(
+        "Upload a single document (PDF or image) to extract all configured entities."
+    )
+
+    uploaded = st.file_uploader(
+        "Upload Document",
+        type=["pdf", "png", "jpg", "jpeg", "tiff", "bmp", "webp"],
+        help="PDF files use the full RAG pipeline. Images use direct MLLM extraction.",
+    )
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        doc_label = st.text_input(
+            "Document Label",
+            value="My Document",
+            help="Human-readable name for this document",
+        )
+    with col2:
+        extract_btn = st.button(
+            "Extract Entities",
+            type="primary",
+            disabled=not (uploaded and settings.get("config_name")),
+            use_container_width=True,
+        )
+
+    if not settings.get("config_name"):
+        st.info("Select a configuration in the sidebar to continue.")
+        return
+
+    if extract_btn and uploaded:
+        with st.spinner("Extracting entities… this may take 30-90 seconds"):
+            files = {"file": (uploaded.name, uploaded.getvalue(), uploaded.type)}
+            data = {
+                "config_name": settings["config_name"],
+                "confidence_threshold": settings["confidence"],
+            }
+            result = api_post_files("/extract", files=files, data=data)
+
+        if result:
+            _render_extraction_result(result)
+
+
+def _render_extraction_result(result: dict) -> None:
+    """Display extraction results."""
+    st.success(
+        f"✅ Extraction complete in {result.get('processing_time_s', 0):.1f}s "
+        f"| Job: {result.get('job_id', '')}"
+    )
+
+    # Summary metrics
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total Entities", result.get("total_entities", 0))
+    col2.metric("Found", result.get("found_count", 0))
+    col3.metric("Review Required", result.get("review_count", 0), delta=None, delta_color="inverse")
+    col4.metric("Tokens (In/Out)", f"{result.get('input_tokens', 0)} / {result.get('output_tokens', 0)}")
+    col5.metric("Cost", f"${result.get('total_cost', 0):.5f}")
+
+    st.divider()
+
+    # Entity table
+    entities = result.get("entities", {})
+    if not entities:
+        st.warning("No entities extracted.")
+        return
+
+    rows = []
+    for name, ent in entities.items():
+        rows.append({
+            "Entity": name,
+            "Value": ent.get("extracted_value") or "—",
+            "Status": ent.get("extraction_status", ""),
+            "Type": ent.get("entity_type", ""),
+            "Confidence": f"{ent.get('confidence', 0.0):.0%}",
+            "Source Page": ent.get("source_page"),
+            "Review": "⚠️" if ent.get("review_required") else "✅",
+        })
+
+    df = pd.DataFrame(rows)
+
+    def _highlight(row):
+        if row["Review"] == "⚠️":
+            return ["background-color: #fff3cd"] * len(row)
+        if row["Status"] == "NOT_FOUND":
+            return ["background-color: #fce8e8"] * len(row)
+        return [""] * len(row)
+
+    st.dataframe(
+        df.style.apply(_highlight, axis=1),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # Detailed view
+    with st.expander("🔎 Entity Details", expanded=False):
+        for name, ent in entities.items():
+            with st.container():
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    st.markdown(f"**{name}**")
+                    st.markdown(f"Status: `{ent.get('extraction_status')}`")
+                    st.markdown(f"Confidence: `{ent.get('confidence', 0):.0%}`")
+                with c2:
+                    st.markdown(f"**Value:** {ent.get('extracted_value') or '—'}")
+                    if ent.get("source_region"):
+                        st.markdown(f"**Region:** {ent.get('source_region')}")
+                    if ent.get("expression_audit"):
+                        st.json(ent["expression_audit"])
+                st.divider()
+
+    # JSON download
+    st.download_button(
+        "⬇️ Download JSON",
+        data=json.dumps(result, indent=2),
+        file_name=f"extraction_{result.get('job_id', 'result')}.json",
+        mime="application/json",
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 2: Document Pair Validation
+# ══════════════════════════════════════════════════════════════════════════════
+
+def render_validation_tab(settings: dict) -> None:
+    """Render the document pair validation tab."""
+    st.header("⚖️ Validate Document Pair")
+    st.caption(
+        "Upload two documents to extract entities and run semantic validation."
+    )
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.subheader("Document A")
+        doc_a_file = st.file_uploader(
+            "Upload Document A",
+            type=["pdf", "png", "jpg", "jpeg", "tiff", "bmp", "webp"],
+            key="doc_a_upload",
+        )
+        doc_a_name = st.text_input(
+            "Label for Document A",
+            value="Document A (Source)",
+            key="doc_a_name",
+        )
+
+    with col_b:
+        st.subheader("Document B")
+        doc_b_file = st.file_uploader(
+            "Upload Document B",
+            type=["pdf", "png", "jpg", "jpeg", "tiff", "bmp", "webp"],
+            key="doc_b_upload",
+        )
+        doc_b_name = st.text_input(
+            "Label for Document B",
+            value="Document B (Comparison)",
+            key="doc_b_name",
+        )
+
+    if not settings.get("config_name"):
+        st.info("Select a configuration in the sidebar to continue.")
+        return
+
+    output_format = st.radio(
+        "Output Format",
+        options=["Full Validation Report", "M2 Ground Truth Format"],
+        horizontal=True,
+    )
+
+    validate_btn = st.button(
+        "Run Validation",
+        type="primary",
+        disabled=not (doc_a_file and doc_b_file and settings.get("config_name")),
+        use_container_width=False,
+    )
+
+    if validate_btn and doc_a_file and doc_b_file:
+        endpoint = (
+            "/validate/gt"
+            if output_format == "M2 Ground Truth Format"
+            else "/validate"
+        )
+
+        with st.spinner(
+            "Validating document pair… this may take 60-180 seconds"
+        ):
+            files = {
+                "doc_a": (doc_a_file.name, doc_a_file.getvalue(), doc_a_file.type),
+                "doc_b": (doc_b_file.name, doc_b_file.getvalue(), doc_b_file.type),
+            }
+            data = {
+                "config_name": settings["config_name"],
+                "doc_a_name": doc_a_name,
+                "doc_b_name": doc_b_name,
+                "confidence_threshold": settings["confidence"],
+            }
+            result = api_post_files(endpoint, files=files, data=data, timeout=600)
+
+        if result:
+            if output_format == "M2 Ground Truth Format":
+                _render_groundtruth_result(result)
+            else:
+                _render_validation_result(result)
+
+
+def _render_validation_result(result: dict) -> None:
+    """Display full validation report."""
+    summary = result.get("summary", {})
+
+    st.success(
+        f"✅ Validation complete in {result.get('processing_time_s', 0):.1f}s "
+        f"| Job: {result.get('job_id', '')}"
+    )
+
+    # Summary metrics
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    total = summary.get("total_entities", 0)
+    matches = summary.get("total_matches", 0)
+    mismatches = summary.get("total_mismatches", 0)
+    match_rate = summary.get("match_rate", 0.0)
+
+    col1.metric("Total", total)
+    col2.metric("Matches", matches)
+    col3.metric("Mismatches", mismatches)
+    col4.metric("Review Req.", summary.get("review_required", 0))
+    col5.metric("Tokens (I/O)", f"{summary.get('input_tokens', 0)} / {summary.get('output_tokens', 0)}")
+    col6.metric("Cost", f"${summary.get('total_cost', 0):.5f}")
+
+    # Match rate gauge
+    st.progress(match_rate, text=f"Overall Match Rate: {match_rate:.1%}")
+
+    st.divider()
+
+    # Per-section results
+    sections = result.get("sections", [])
+    for section in sections:
+        sec_name = section.get("section_name", "")
+        sec_match = section.get("match_count", 0)
+        sec_mismatch = section.get("mismatch_count", 0)
+        sec_total = len(section.get("entities", []))
+
+        with st.expander(
+            f"📂 {sec_name}  "
+            f"({sec_match}/{sec_total} match)",
+            expanded=sec_mismatch > 0,
+        ):
+            rows = []
+            for ent in section.get("entities", []):
+                status = ent.get("validation_status", "")
+                icon = {
+                    "MATCH": "✅",
+                    "MISMATCH": "❌",
+                    "PARTIAL_MATCH": "⚠️",
+                    "INELIGIBLE": "➖",
+                }.get(status, "?")
+
+                rows.append({
+                    "Entity": ent.get("entity_name", ""),
+                    "Doc A Value": ent.get("doc_a_value") or "—",
+                    "Doc B Value": ent.get("doc_b_value") or "—",
+                    "Status": f"{icon} {status}",
+                    "Discrepancy": ent.get("discrepancy_type", ""),
+                    "Confidence": f"{ent.get('confidence', 0):.0%}",
+                    "Fast Path": "⚡" if ent.get("fast_path_match") else "",
+                })
+
+            df = pd.DataFrame(rows)
+
+            def _style(row):
+                s = row["Status"]
+                if "MISMATCH" in s:
+                    return ["background-color: #fce8e8"] * len(row)
+                if "MATCH" in s and "PARTIAL" not in s:
+                    return ["background-color: #e8f5e9"] * len(row)
+                return [""] * len(row)
+
+            st.dataframe(
+                df.style.apply(_style, axis=1),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            # Reasoning details
+            for ent in section.get("entities", []):
+                if ent.get("validation_status") in ("MISMATCH", "PARTIAL_MATCH"):
+                    st.warning(
+                        f"**{ent['entity_name']}**: {ent.get('reasoning', '')}"
+                    )
+
+    st.divider()
+
+    # Extraction details
+    with st.expander("📊 Raw Extraction Results", expanded=False):
+        col_a, col_b = st.columns(2)
+
+        def _entity_df(entities_dict: dict) -> pd.DataFrame:
+            return pd.DataFrame([
+                {
+                    "Entity": name,
+                    "Value": e.get("extracted_value") or "—",
+                    "Status": e.get("extraction_status", ""),
+                    "Confidence": f"{e.get('confidence', 0):.0%}",
+                    "Page": e.get("source_page"),
+                }
+                for name, e in entities_dict.items()
+            ])
+
+        with col_a:
+            st.markdown(f"**{result.get('doc_a_name', 'Doc A')}**")
+            st.dataframe(
+                _entity_df(result.get("doc_a_entities", {})),
+                hide_index=True,
+                use_container_width=True,
+            )
+        with col_b:
+            st.markdown(f"**{result.get('doc_b_name', 'Doc B')}**")
+            st.dataframe(
+                _entity_df(result.get("doc_b_entities", {})),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+    # Download buttons
+    col1, col2 = st.columns(2)
+    with col1:
+        st.download_button(
+            "⬇️ Download Full Report (JSON)",
+            data=json.dumps(result, indent=2),
+            file_name=f"validation_{result.get('job_id', 'result')}.json",
+            mime="application/json",
+        )
+    with col2:
+        # Build GT format from the full result for convenience
+        gt_entities = []
+        for section in result.get("sections", []):
+            for ent in section.get("entities", []):
+                gt_entities.append({
+                    "entity_name": ent["entity_name"],
+                    "doc_a_value": ent.get("doc_a_value"),
+                    "doc_b_value": ent.get("doc_b_value"),
+                    "normalized_value": ent.get("doc_a_normalized"),
+                    "validation_type": "exact_match" if ent.get("fast_path_match") else "semantic_match",
+                    "validation_result": ent.get("validation_status", "").lower(),
+                })
+        gt_payload = {"entities": gt_entities}
+        st.download_button(
+            "⬇️ Download GT Format (JSON)",
+            data=json.dumps(gt_payload, indent=2),
+            file_name=f"gt_{result.get('job_id', 'result')}.json",
+            mime="application/json",
+        )
+
+
+def _render_groundtruth_result(result: dict) -> None:
+    """Display M2 ground truth format result."""
+    st.success(
+        f"✅ Validation complete in {result.get('processing_time_s', 0):.1f}s "
+        f"| Job: {result.get('job_id', '')}"
+    )
+
+    entities = result.get("entities", [])
+    matches = sum(1 for e in entities if e.get("validation_result") == "match")
+    mismatches = len(entities) - matches
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Entities", len(entities))
+    col2.metric("Matches", matches)
+    col3.metric("Mismatches", mismatches)
+
+    st.divider()
+
+    rows = []
+    for ent in entities:
+        icon = "✅" if ent.get("validation_result") == "match" else "❌"
+        rows.append({
+            "Entity": ent.get("entity_name", ""),
+            "Doc A Value": ent.get("doc_a_value") or "—",
+            "Doc B Value": ent.get("doc_b_value") or "—",
+            "Normalized": ent.get("normalized_value") or "—",
+            "Type": ent.get("validation_type", ""),
+            "Result": f"{icon} {ent.get('validation_result', '')}",
+        })
+
+    df = pd.DataFrame(rows)
+
+    def _style(row):
+        if "❌" in row["Result"]:
+            return ["background-color: #fce8e8"] * len(row)
+        return ["background-color: #e8f5e9"] * len(row)
+
+    st.dataframe(
+        df.style.apply(_style, axis=1),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.download_button(
+        "⬇️ Download Ground Truth JSON",
+        data=json.dumps({"entities": entities}, indent=2),
+        file_name=f"gt_{result.get('job_id', 'result')}.json",
+        mime="application/json",
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 3: API Explorer
+# ══════════════════════════════════════════════════════════════════════════════
+
+def render_api_tab() -> None:
+    """Render API explorer tab."""
+    st.header("🔌 API Explorer")
+    st.caption(
+        f"FastAPI backend running at `{API_BASE}` | "
+        f"[OpenAPI Docs]({API_BASE}/docs) | [ReDoc]({API_BASE}/redoc)"
+    )
+
+    # Health check
+    st.subheader("Health Check")
+    if st.button("GET /health"):
+        health = api_get("/health")
+        if health:
+            st.json(health)
+
+    st.divider()
+
+    # Config list
+    st.subheader("List Configs")
+    if st.button("GET /configs"):
+        configs = api_get("/configs")
+        if configs:
+            st.json(configs)
+
+    st.divider()
+
+    # Config detail
+    st.subheader("Config Detail")
+    config_name_input = st.text_input(
+        "Config name",
+        value="funsd_ner_config",
+        key="api_explorer_config",
+    )
+    if st.button("GET /configs/{name}"):
+        detail = api_get(f"/configs/{config_name_input}")
+        if detail:
+            st.json(detail)
+
+    st.divider()
+
+    # Endpoint reference
+    st.subheader("📚 Endpoint Reference")
+    endpoints = [
+        ("GET",  "/health",       "API health + available configs"),
+        ("GET",  "/configs",      "List all configuration names"),
+        ("GET",  "/configs/{name}", "Get config sections and entities"),
+        ("POST", "/extract",      "Extract entities from one document"),
+        ("POST", "/validate",     "Validate a document pair (full report)"),
+        ("POST", "/validate/gt",  "Validate a document pair (GT format)"),
+        ("POST", "/configs/create", "Create config from field definitions"),
+        ("GET",  "/configs/markdowns", "List saved Markdown configs"),
+        ("GET",  "/configs/{name}/markdown", "Get Markdown extraction file"),
+        ("DELETE", "/configs/{name}", "Delete a config (YAML + Markdown)"),
+    ]
+    df = pd.DataFrame(endpoints, columns=["Method", "Endpoint", "Description"])
+    st.dataframe(df, hide_index=True, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 4: Config Builder — CSV fields → YAML + Markdown
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _empty_field_row() -> dict:
+    """Return a blank field row for the data editor."""
+    return {
+        "field_name": "",
+        "field_description": "",
+        "section": "General",
+        "data_type": "text",
+        "example_value": "",
+        "extraction_logic": "DIRECT",
+        "expression_template": "",
+    }
+
+
+def _safe_text(value: Any) -> str:
+    """Coerce optional editor values to a stripped string."""
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    return str(value).strip()
+
+
+def _normalize_config_key(name: Any) -> str:
+    """Normalize config names for duplicate checks (mirrors snake_case intent)."""
+    return "_".join(_safe_text(name).lower().split())
+
+
+def _sync_cb_fields_from_editor() -> None:
+    """Sync manual form rows from data_editor widget state into session state."""
+    editor_value = st.session_state.get("cb_data_editor")
+    if editor_value is None:
+        return
+
+    expected_cols = [
+        "field_name",
+        "field_description",
+        "section",
+        "data_type",
+        "example_value",
+        "extraction_logic",
+        "expression_template",
+    ]
+
+    if isinstance(editor_value, dict) and any(
+        k in editor_value for k in ("edited_rows", "added_rows", "deleted_rows")
+    ):
+        base_df = st.session_state.get("cb_fields_df")
+        if not isinstance(base_df, pd.DataFrame) or base_df.empty:
+            base_df = pd.DataFrame([_empty_field_row()])
+        else:
+            base_df = base_df.copy()
+
+        deleted_rows = editor_value.get("deleted_rows", []) or []
+        if deleted_rows:
+            valid_idx = [i for i in deleted_rows if 0 <= int(i) < len(base_df)]
+            if valid_idx:
+                base_df = base_df.drop(index=valid_idx)
+
+        edited_rows = editor_value.get("edited_rows", {}) or {}
+        for idx, changed_cols in edited_rows.items():
+            row_idx = int(idx)
+            if row_idx < 0 or row_idx >= len(base_df):
+                continue
+            for col, value in (changed_cols or {}).items():
+                if col in expected_cols:
+                    base_df.at[row_idx, col] = value
+
+        added_rows = editor_value.get("added_rows", []) or []
+        if added_rows:
+            defaults = _empty_field_row()
+            normalized_new_rows = []
+            for row in added_rows:
+                merged = defaults.copy()
+                if isinstance(row, dict):
+                    merged.update(row)
+                normalized_new_rows.append(merged)
+            base_df = pd.concat(
+                [base_df, pd.DataFrame(normalized_new_rows)],
+                ignore_index=True,
+            )
+
+        df = base_df.reset_index(drop=True)
+    elif isinstance(editor_value, pd.DataFrame):
+        df = editor_value.copy()
+    else:
+        df = pd.DataFrame(editor_value)
+
+    for col, default in _empty_field_row().items():
+        if col not in df.columns:
+            df[col] = default
+
+    st.session_state.cb_fields_df = df[expected_cols].copy()
+
+
+def render_config_builder_tab() -> None:
+    """Render the Config Builder tab for creating extraction configs."""
+    st.header("🛠️ Config Builder")
+    st.caption(
+        "Define extraction fields via form or CSV upload. "
+        "The system generates a YAML config + Markdown extraction instruction file."
+    )
+
+    # ── Sub-tabs: Create / Manage ──────────────────────────────────────────
+    create_tab, manage_tab = st.tabs(["➕ Create Config", "📂 Manage Configs"])
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CREATE CONFIG
+    # ══════════════════════════════════════════════════════════════════════════
+    with create_tab:
+        st.subheader("Define Fields")
+
+        col_meta1, col_meta2 = st.columns(2)
+        with col_meta1:
+            config_name_input = st.text_input(
+                "Config Name",
+                value="",
+                placeholder="e.g. invoice_extraction",
+                help="Unique name (will be converted to snake_case)",
+                key="cb_config_name",
+            )
+        with col_meta2:
+            domain_input = st.text_input(
+                "Domain",
+                value="general",
+                placeholder="e.g. healthcare, finance, legal",
+                key="cb_domain",
+            )
+
+        existing_config_keys: set[str] = set()
+        configs_data = _cached_api_get("/configs")
+        if configs_data:
+            for cfg_name in configs_data.get("configs", []):
+                key = _normalize_config_key(cfg_name)
+                if key:
+                    existing_config_keys.add(key)
+
+        markdown_data = _cached_api_get("/configs/markdowns")
+        if markdown_data:
+            for md_name in markdown_data.get("markdowns", []):
+                md_base = _safe_text(md_name)
+                if md_base.endswith(".md"):
+                    md_base = md_base[:-3]
+                key = _normalize_config_key(md_base)
+                if key:
+                    existing_config_keys.add(key)
+
+        entered_config_key = _normalize_config_key(config_name_input)
+        config_name_exists = bool(
+            entered_config_key and entered_config_key in existing_config_keys
+        )
+
+        if config_name_exists:
+            st.error(
+                "This config name already exists. Please choose a different name "
+                "to avoid overwriting saved files."
+            )
+
+        st.divider()
+
+        # ── Input method selector ──────────────────────────────────────────
+        input_method = st.radio(
+            "Input Method",
+            options=["📝 Manual Form", "📤 CSV Upload"],
+            horizontal=True,
+            key="cb_input_method",
+        )
+
+        fields_data: list[dict] = []
+        all_rows: list[dict] = []
+
+        if input_method == "📤 CSV Upload":
+            st.info(
+                "Upload a CSV with columns: "
+                "`field_name`, `field_description`, `section`, `data_type`, "
+                "`example_value`, `extraction_logic`, `expression_template`  \n"
+                "Only `field_name` is required."
+            )
+            csv_file = st.file_uploader(
+                "Upload CSV",
+                type=["csv"],
+                key="cb_csv_upload",
+            )
+            if csv_file:
+                try:
+                    df_csv = pd.read_csv(csv_file)
+                    if "field_name" not in df_csv.columns:
+                        st.error("CSV must have a `field_name` column.")
+                    else:
+                        # Fill defaults
+                        defaults = {
+                            "field_description": "",
+                            "section": "General",
+                            "data_type": "text",
+                            "example_value": "",
+                            "extraction_logic": "DIRECT",
+                            "expression_template": "",
+                        }
+                        for col, default in defaults.items():
+                            if col not in df_csv.columns:
+                                df_csv[col] = default
+                            else:
+                                df_csv[col] = df_csv[col].fillna(default)
+
+                        st.success(f"Loaded {len(df_csv)} fields from CSV")
+                        st.dataframe(df_csv, use_container_width=True, hide_index=True)
+                        fields_data = df_csv.to_dict("records")
+                        all_rows = fields_data
+                except Exception as exc:
+                    st.error(f"Failed to parse CSV: {exc}")
+
+            # Download template
+            template_csv = (
+                "field_name,field_description,section,data_type,"
+                "example_value,extraction_logic,expression_template\n"
+                "invoice_number,Unique invoice identifier,Header,text,INV-001,DIRECT,\n"
+                "total_amount,Total invoice amount,Totals,monetary,$1500.00,DIRECT,\n"
+                "tax_amount,Tax computed from subtotal,Totals,monetary,$150.00,EXPRESSION,"
+                "subtotal * tax_rate\n"
+            )
+            st.download_button(
+                "📥 Download CSV Template",
+                data=template_csv,
+                file_name="cmsvs_fields_template.csv",
+                mime="text/csv",
+            )
+
+        else:
+            # ── Manual form using st.data_editor ───────────────────────────
+            if "cb_fields_df" not in st.session_state:
+                if "cb_fields" in st.session_state:
+                    st.session_state.cb_fields_df = pd.DataFrame(
+                        st.session_state.cb_fields
+                    )
+                else:
+                    st.session_state.cb_fields_df = pd.DataFrame([_empty_field_row()])
+
+            expected_cols = [
+                "field_name",
+                "field_description",
+                "section",
+                "data_type",
+                "example_value",
+                "extraction_logic",
+                "expression_template",
+            ]
+            for col, default in _empty_field_row().items():
+                if col not in st.session_state.cb_fields_df.columns:
+                    st.session_state.cb_fields_df[col] = default
+            st.session_state.cb_fields_df = st.session_state.cb_fields_df[expected_cols]
+
+            edited_df = st.data_editor(
+                st.session_state.cb_fields_df,
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "field_name": st.column_config.TextColumn(
+                        "Field Name *", help="Required. e.g. invoice_number"
+                    ),
+                    "field_description": st.column_config.TextColumn(
+                        "Description", help="What this field represents"
+                    ),
+                    "section": st.column_config.TextColumn(
+                        "Section", help="Logical grouping", default="General"
+                    ),
+                    "data_type": st.column_config.SelectboxColumn(
+                        "Data Type",
+                        options=["text", "monetary", "percentage", "date", "number"],
+                        default="text",
+                    ),
+                    "example_value": st.column_config.TextColumn(
+                        "Example", help="Example expected value"
+                    ),
+                    "extraction_logic": st.column_config.SelectboxColumn(
+                        "Logic",
+                        options=["DIRECT", "EXPRESSION"],
+                        default="DIRECT",
+                    ),
+                    "expression_template": st.column_config.TextColumn(
+                        "Expression", help="Only for EXPRESSION logic"
+                    ),
+                },
+                key="cb_data_editor",
+                on_change=_sync_cb_fields_from_editor,
+            )
+
+            # Keep a DataFrame in session state to avoid coercion/reset jitter.
+            if "cb_fields_df" not in st.session_state:
+                st.session_state.cb_fields_df = edited_df.copy()
+            all_rows = st.session_state.cb_fields_df.to_dict("records")
+            # Filter out empty rows
+            fields_data = [
+                r for r in all_rows
+                if _safe_text(r.get("field_name"))
+            ]
+
+        st.divider()
+
+        missing_field_name_rows = [
+            i + 1
+            for i, row in enumerate(all_rows)
+            if not _safe_text(row.get("field_name"))
+        ]
+        has_missing_field_name = bool(missing_field_name_rows)
+        has_any_user_input = any(
+            _safe_text(row.get("field_name"))
+            or _safe_text(row.get("field_description"))
+            or _safe_text(row.get("example_value"))
+            or _safe_text(row.get("expression_template"))
+            or (_safe_text(row.get("section")) and _safe_text(row.get("section")) != "General")
+            or (_safe_text(row.get("data_type")) and _safe_text(row.get("data_type")) != "text")
+            or (
+                _safe_text(row.get("extraction_logic"))
+                and _safe_text(row.get("extraction_logic")) != "DIRECT"
+            )
+            for row in all_rows
+        )
+
+        if has_missing_field_name and has_any_user_input:
+            preview_rows = ", ".join(str(i) for i in missing_field_name_rows[:10])
+            more = (
+                f" (and {len(missing_field_name_rows) - 10} more)"
+                if len(missing_field_name_rows) > 10
+                else ""
+            )
+            st.warning(
+                "`field_name` is required for every row. "
+                f"Missing in row(s): {preview_rows}{more}. "
+                "Complete or remove those rows to enable generation."
+            )
+
+        # ── Generate button ────────────────────────────────────────────────
+        can_generate = bool(
+            config_name_input
+            and config_name_input.strip()
+            and fields_data
+            and not has_missing_field_name
+            and not config_name_exists
+        )
+
+        if st.button(
+            "🚀 Generate Config & Markdown",
+            type="primary",
+            disabled=not can_generate,
+            use_container_width=True,
+            key="cb_generate_btn",
+        ):
+            payload = {
+                "config_name": config_name_input.strip(),
+                "domain": domain_input.strip() or "general",
+                "fields": [
+                    {
+                        "field_name": _safe_text(f.get("field_name")),
+                        "field_description": _safe_text(f.get("field_description")),
+                        "section": _safe_text(f.get("section")) or "General",
+                        "data_type": _safe_text(f.get("data_type")) or "text",
+                        "example_value": _safe_text(f.get("example_value")),
+                        "extraction_logic": _safe_text(f.get("extraction_logic")) or "DIRECT",
+                        "expression_template": _safe_text(f.get("expression_template")) or None,
+                    }
+                    for f in fields_data
+                    if _safe_text(f.get("field_name"))
+                ],
+            }
+
+            with st.spinner("Generating config files…"):
+                result = api_post_json("/configs/create", payload)
+
+            if result:
+                _cached_api_get.clear()
+                st.success(
+                    f"✅ Config **{result['config_name']}** created! "
+                    f"({result['total_sections']} sections, {result['total_fields']} fields)"
+                )
+
+                # Show Markdown preview
+                st.subheader("📄 Generated Markdown (LLM Extraction Instructions)")
+                st.markdown(result.get("markdown_preview", ""), unsafe_allow_html=False)
+
+                # Download buttons
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    st.download_button(
+                        "⬇️ Download Markdown (.md)",
+                        data=result.get("markdown_preview", ""),
+                        file_name=f"{result['config_name']}.md",
+                        mime="text/markdown",
+                        key="cb_dl_md",
+                    )
+                with col_dl2:
+                    st.download_button(
+                        "⬇️ Download Config Info (JSON)",
+                        data=json.dumps(result, indent=2),
+                        file_name=f"{result['config_name']}_info.json",
+                        mime="application/json",
+                        key="cb_dl_json",
+                    )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # MANAGE CONFIGS (dropdown, preview, delete)
+    # ══════════════════════════════════════════════════════════════════════════
+    with manage_tab:
+        st.subheader("Saved Markdown Configs")
+
+        # Fetch list of markdowns
+        md_list_data = api_get("/configs/markdowns")
+        md_names: list[str] = md_list_data.get("markdowns", []) if md_list_data else []
+
+        if not md_names:
+            st.info(
+                "No saved Markdown configs yet. Use the **Create Config** tab to build one."
+            )
+        else:
+            selected_md = st.selectbox(
+                "Select a Markdown Config",
+                options=md_names,
+                key="cb_manage_select",
+            )
+
+            if "cb_delete_target" not in st.session_state:
+                st.session_state.cb_delete_target = None
+
+            if selected_md:
+                col_actions = st.columns([1, 1, 2])
+
+                with col_actions[0]:
+                    view_btn = st.button("👁️ View", key="cb_view_btn", use_container_width=True)
+                with col_actions[1]:
+                    delete_btn = st.button(
+                        "🗑️ Delete", key="cb_delete_btn",
+                        type="secondary", use_container_width=True,
+                    )
+
+                if delete_btn:
+                    st.session_state.cb_delete_target = selected_md
+                    st.session_state[f"cb_delete_confirm_{selected_md}"] = False
+
+                if view_btn:
+                    md_detail = api_get(f"/configs/{selected_md}/markdown")
+                    if md_detail:
+                        st.markdown(f"**Config:** `{md_detail['config_name']}`")
+                        st.markdown(
+                            f"**YAML exists:** {'✅' if md_detail['yaml_exists'] else '❌'}"
+                        )
+                        st.divider()
+
+                        # Render the markdown
+                        st.markdown(md_detail["markdown_content"], unsafe_allow_html=False)
+
+                        # Download
+                        st.download_button(
+                            "⬇️ Download Markdown",
+                            data=md_detail["markdown_content"],
+                            file_name=f"{selected_md}.md",
+                            mime="text/markdown",
+                            key="cb_manage_dl",
+                        )
+
+                if st.session_state.get("cb_delete_target") == selected_md:
+                    confirm_key = f"cb_delete_confirm_{selected_md}"
+                    confirm = st.checkbox(
+                        f"Confirm deletion of **{selected_md}** (YAML + Markdown)",
+                        key=confirm_key,
+                    )
+                    if confirm:
+                        del_result = api_delete(f"/configs/{selected_md}")
+                        if del_result:
+                            _cached_api_get.clear()
+                            st.success(del_result.get("message", "Deleted."))
+                            st.session_state.cb_delete_target = None
+                            st.rerun()
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 5: Manual Validation — Ground Truth vs Solution Output
+# ══════════════════════════════════════════════════════════════════════════════
+
+import numpy as np
+from collections import defaultdict
+
+# ── Normalisation helpers ──────────────────────────────────────────────────────
+
+def _canonical_result(raw: str) -> str:
+    """Map any variant result string to a canonical 3-class label."""
+    if raw is None:
+        return "ineligible"
+    v = str(raw).strip().lower()
+    if v in {"match", "exact_match", "semantic_match", "true"}:
+        return "match"
+    if v in {"mismatch", "conflict", "false"}:
+        return "mismatch"
+    if v in {"partial_match", "partial"}:
+        return "partial_match"
+    return "ineligible"
+
+
+def _canonical_type(raw: str) -> str:
+    """Map validation_type variants to a canonical label."""
+    if raw is None:
+        return "unknown"
+    v = str(raw).strip().lower()
+    if v in {"exact_match", "exact"}:
+        return "exact_match"
+    if v in {"semantic_match", "semantic"}:
+        return "semantic_match"
+    if v in {"conflict"}:
+        return "conflict"
+    return "other"
+
+
+def _load_entities(data: dict) -> list[dict]:
+    """
+    Accept both FUNSD flat format  →  { "entities": [...] }
+    and SBC sectioned format       →  { "sections": [{ "entities": [...] }] }
+    Returns a flat list of entity dicts.
+    """
+    # SBC format has top-level "sections"
+    if "sections" in data:
+        flat = []
+        for section in data["sections"]:
+            for ent in section.get("entities", []):
+                flat.append(ent)
+        return flat
+    # FUNSD flat format
+    return data.get("entities", [])
+
+
+def _build_entity_index(entities: list[dict]) -> dict[str, dict]:
+    """Index entities by entity_name for O(1) lookup."""
+    return {e["entity_name"]: e for e in entities if "entity_name" in e}
+
+
+# ── Metric computation ─────────────────────────────────────────────────────────
+
+RESULT_CLASSES = ["match", "mismatch", "partial_match", "ineligible"]
+
+def compute_confusion_matrix(
+    gt_index: dict[str, dict],
+    pred_index: dict[str, dict],
+) -> tuple[np.ndarray, list[str], list[dict]]:
+    """
+    Compare ground truth vs predicted validation_result.
+    Only scores entities that exist in ground truth.
+    Extra entities in prediction are ignored entirely.
+    Returns (confusion_matrix, class_labels, per_entity_rows).
+    """
+    # ── KEY CHANGE: iterate GT only, ignore extras in pred ────────────────────
+    gt_names = sorted(gt_index.keys())
+
+    label_to_idx = {lbl: i for i, lbl in enumerate(RESULT_CLASSES)}
+    cm   = np.zeros((len(RESULT_CLASSES), len(RESULT_CLASSES)), dtype=int)
+    rows = []
+
+    for name in gt_names:
+        gt_ent   = gt_index[name]
+        pred_ent = pred_index.get(name, {})   # may be absent — that is fine
+
+        gt_result   = _canonical_result(gt_ent.get("validation_result"))
+        pred_result = _canonical_result(
+            pred_ent.get("validation_result") if pred_ent else None
+        )
+
+        gt_type   = _canonical_type(gt_ent.get("validation_type"))
+        pred_type = _canonical_type(
+            pred_ent.get("validation_type") if pred_ent else None
+        )
+
+        correct = gt_result == pred_result
+        cm[label_to_idx[gt_result]][label_to_idx[pred_result]] += 1
+
+        rows.append({
+            "entity_name": name,
+            "gt_result":   gt_result,
+            "pred_result": pred_result,
+            "gt_type":     gt_type,
+            "pred_type":   pred_type,
+            "gt_doc_a":    gt_ent.get("doc_a_value", "—"),
+            "gt_doc_b":    gt_ent.get("doc_b_value", "—"),
+            "pred_doc_a":  pred_ent.get("doc_a_value", "—") if pred_ent else "—",
+            "pred_doc_b":  pred_ent.get("doc_b_value", "—") if pred_ent else "—",
+            "correct":     correct,
+            "in_gt":       True,        # always True — we only walk GT names
+            "in_pred":     bool(pred_ent),
+        })
+
+    # ── Track ignored extras for display purposes (not scored) ────────────────
+    extra_in_pred = sorted(set(pred_index.keys()) - set(gt_index.keys()))
+
+    return cm, RESULT_CLASSES, rows, extra_in_pred
+
+
+def compute_metrics(cm: np.ndarray, labels: list[str]) -> dict[str, dict]:
+    """Compute per-class precision, recall, F1 and overall accuracy."""
+    metrics = {}
+    total   = cm.sum()
+    correct = np.trace(cm)
+    accuracy = correct / total if total > 0 else 0.0
+
+    for i, lbl in enumerate(labels):
+        tp = cm[i, i]
+        fp = cm[:, i].sum() - tp
+        fn = cm[i, :].sum() - tp
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1        = (2 * precision * recall / (precision + recall)
+                     if (precision + recall) > 0 else 0.0)
+        support   = int(cm[i, :].sum())
+        metrics[lbl] = {
+            "precision": round(precision, 4),
+            "recall":    round(recall, 4),
+            "f1":        round(f1, 4),
+            "support":   support,
+        }
+
+    # Macro averages (exclude zero-support classes)
+    active = [lbl for lbl in labels if metrics[lbl]["support"] > 0]
+    macro_p  = np.mean([metrics[l]["precision"] for l in active]) if active else 0.0
+    macro_r  = np.mean([metrics[l]["recall"]    for l in active]) if active else 0.0
+    macro_f1 = np.mean([metrics[l]["f1"]        for l in active]) if active else 0.0
+
+    metrics["__overall__"] = {
+        "accuracy":     round(float(accuracy), 4),
+        "macro_p":      round(float(macro_p), 4),
+        "macro_r":      round(float(macro_r), 4),
+        "macro_f1":     round(float(macro_f1), 4),
+        "total_entities": int(total),
+        "correct":        int(correct),
+    }
+    return metrics
+
+
+# ── Plotly confusion matrix ────────────────────────────────────────────────────
+
+def _render_confusion_matrix_plotly(cm: np.ndarray, labels: list[str]) -> None:
+    """Render an annotated heatmap confusion matrix using Plotly."""
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        st.warning("Plotly not installed — showing raw matrix instead. `pip install plotly`")
+        _render_confusion_matrix_fallback(cm, labels)
+        return
+
+    # Row-normalised matrix for colour intensity
+    row_sums = cm.sum(axis=1, keepdims=True)
+    cm_norm  = np.where(row_sums > 0, cm / row_sums, 0.0)
+
+    # ── Build plain-text annotations (no HTML) ─────────────────────────────────
+    annotations = []
+    for i in range(len(labels)):
+        for j in range(len(labels)):
+            count = int(cm[i, j])
+            pct   = cm_norm[i, j] * 100
+
+            # Two-line text using \n — works in Plotly annotations
+            text = f"{count}\n({pct:.1f}%)"
+
+            # White text on dark cells, dark text on light cells
+            font_color = "white" if cm_norm[i, j] > 0.55 else "#0b1220"
+
+            annotations.append(
+                dict(
+                    x=labels[j],
+                    y=labels[i],
+                    text=text,
+                    showarrow=False,
+                    font=dict(
+                        color=font_color,
+                        size=13,
+                        family="Space Mono, monospace",
+                    ),
+                    align="center",
+                )
+            )
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=cm_norm,
+            x=labels,
+            y=labels,
+            colorscale=[
+                [0.0,  "#f0f4fa"],
+                [0.33, "#a8d5c2"],
+                [0.66, "#3aaa7a"],
+                [1.0,  "#0b6a4a"],
+            ],
+            showscale=True,
+            zmin=0,
+            zmax=1,
+            colorbar=dict(
+                title="Row %",
+                tickformat=".0%",
+                thickness=14,
+                len=0.8,
+            ),
+        )
+    )
+
+    fig.update_layout(
+        annotations=annotations,
+        xaxis=dict(
+            title="Predicted",
+            side="bottom",
+            tickfont=dict(family="Space Mono", size=12, color="#0b3b66"),
+        ),
+        yaxis=dict(
+            title="Ground Truth",
+            autorange="reversed",
+            tickfont=dict(family="Space Mono", size=12, color="#0b3b66"),
+        ),
+        font=dict(family="Outfit", size=13),
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        margin=dict(l=10, r=10, t=30, b=10),
+        height=420,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def _render_confusion_matrix_fallback(cm: np.ndarray, labels: list[str]) -> None:
+    """Fallback: render confusion matrix as a styled DataFrame."""
+    df_cm = pd.DataFrame(cm, index=[f"GT: {l}" for l in labels],
+                          columns=[f"Pred: {l}" for l in labels])
+
+    def _color_cells(val):
+        max_val = cm.max()
+        if max_val == 0:
+            return ""
+        intensity = int(220 - (val / max_val) * 160)
+        return f"background-color: rgb({intensity}, 230, {intensity}); font-weight: bold;"
+
+    st.dataframe(
+        df_cm.style.map(_color_cells),
+        use_container_width=True,
+    )
+
+
+# ── Per-entity results table ───────────────────────────────────────────────────
+
+def _render_entity_table(rows: list[dict], filter_mode: str) -> None:
+    """Render the per-entity comparison table with optional filtering."""
+    STATUS_EMOJI = {
+        "match":         "✅",
+        "mismatch":      "❌",
+        "partial_match": "⚠️",
+        "ineligible":    "➖",
+    }
+
+    filtered = rows
+    if filter_mode == "Errors only":
+        filtered = [r for r in rows if not r["correct"]]
+    elif filter_mode == "Matches only":
+        filtered = [r for r in rows if r["correct"]]
+    elif filter_mode == "Missing from prediction":
+        filtered = [r for r in rows if not r["in_pred"]]
+    # "Missing from ground truth" filter removed — those are now ignored entirely
+
+    if not filtered:
+        st.success("No entities matching this filter.")
+        return
+
+    table_rows = []
+    for r in filtered:
+        match_icon = "✅" if r["correct"] else "❌"
+        gt_icon    = STATUS_EMOJI.get(r["gt_result"],   "?")
+        pred_icon  = STATUS_EMOJI.get(r["pred_result"], "?")
+
+        # When entity is missing from prediction, pred columns show a clear marker
+        pred_result_display = (
+            f"{pred_icon} {r['pred_result']}"
+            if r["in_pred"]
+            else "⬜ not in output"
+        )
+
+        table_rows.append({
+            "✓":           match_icon,
+            "Entity":      r["entity_name"],
+            "GT Result":   f"{gt_icon} {r['gt_result']}",
+            "Pred Result": pred_result_display,
+            "GT Type":     r["gt_type"],
+            "Pred Type":   r["pred_type"] if r["in_pred"] else "—",
+            "GT Doc A":    str(r["gt_doc_a"])[:40] if r["gt_doc_a"] else "—",
+            "GT Doc B":    str(r["gt_doc_b"])[:40] if r["gt_doc_b"] else "—",
+            "Pred Doc A":  str(r["pred_doc_a"])[:40] if r["pred_doc_a"] else "—",
+            "Pred Doc B":  str(r["pred_doc_b"])[:40] if r["pred_doc_b"] else "—",
+            "In Pred":     "✅" if r["in_pred"] else "❌",
+        })
+
+    df = pd.DataFrame(table_rows)
+
+    def _row_style(row):
+        if not row["In Pred"] == "✅":
+            return ["background-color: #fefce8"] * len(row)   # yellow = missing
+        if row["✓"] == "❌":
+            return ["background-color: #fff2f2"] * len(row)   # red = wrong
+        if row["✓"] == "✅":
+            return ["background-color: #f0fdf4"] * len(row)   # green = correct
+        return [""] * len(row)
+
+    st.dataframe(
+        df.style.apply(_row_style, axis=1),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+# ── Per-validation-type breakdown ─────────────────────────────────────────────
+
+def _render_type_breakdown(rows: list[dict]) -> None:
+    """Show accuracy broken down by GT validation_type."""
+    by_type: dict[str, dict] = defaultdict(lambda: {"total": 0, "correct": 0})
+    for r in rows:
+        t = r["gt_type"]
+        by_type[t]["total"]   += 1
+        by_type[t]["correct"] += int(r["correct"])
+
+    type_rows = []
+    for t, counts in sorted(by_type.items()):
+        acc = counts["correct"] / counts["total"] if counts["total"] > 0 else 0
+        type_rows.append({
+            "Validation Type":  t,
+            "Total":            counts["total"],
+            "Correct":          counts["correct"],
+            "Errors":           counts["total"] - counts["correct"],
+            "Accuracy":         f"{acc:.1%}",
+        })
+
+    df = pd.DataFrame(type_rows)
+
+    def _acc_color(val):
+        try:
+            pct = float(val.strip("%")) / 100
+            if pct >= 0.9:  return "background-color:#f0fdf4; color:#15803d; font-weight:bold"
+            if pct >= 0.7:  return "background-color:#fefce8; color:#b45309; font-weight:bold"
+            return "background-color:#fff2f2; color:#b91c1c; font-weight:bold"
+        except Exception:
+            return ""
+
+    st.dataframe(
+        df.style.map(_acc_color, subset=["Accuracy"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+# ── Main render function ───────────────────────────────────────────────────────
+
+def render_manual_validation_tab() -> None:
+    """Render the Manual Validation tab — GT JSON vs Solution JSON."""
+
+    st.header("📊 Manual Validation")
+    st.caption(
+        "Upload a **Ground Truth JSON** and a **Solution Output JSON** "
+        "(both in FUNSD or SBC format) to evaluate extraction accuracy."
+    )
+
+    # ── File upload ────────────────────────────────────────────────────────────
+    col_up1, col_up2 = st.columns(2)
+
+    with col_up1:
+        st.subheader("Ground Truth JSON")
+        gt_file = st.file_uploader(
+            "Upload ground truth",
+            type=["json"],
+            key="mv_gt_upload",
+            help="File from datasets/FUNSD/ground_truth/ or datasets/SBC/json/",
+        )
+
+    with col_up2:
+        st.subheader("Solution Output JSON")
+        pred_file = st.file_uploader(
+            "Upload solution output",
+            type=["json"],
+            key="mv_pred_upload",
+            help="Output from /validate/gt endpoint or run_pipeline.py",
+        )
+
+    # ── Format hint ───────────────────────────────────────────────────────────
+    with st.expander("ℹ️ Supported JSON formats", expanded=False):
+        col_fmt1, col_fmt2 = st.columns(2)
+        with col_fmt1:
+            st.markdown("**FUNSD flat format**")
+            st.code(
+                '{\n'
+                '  "entities": [\n'
+                '    {\n'
+                '      "entity_name": "document_title",\n'
+                '      "doc_a_value": "TITLE A",\n'
+                '      "doc_b_value": "title a",\n'
+                '      "validation_type": "exact_match",\n'
+                '      "validation_result": "match"\n'
+                '    }\n'
+                '  ]\n'
+                '}',
+                language="json",
+            )
+        with col_fmt2:
+            st.markdown("**SBC sectioned format**")
+            st.code(
+                '{\n'
+                '  "sections": [\n'
+                '    {\n'
+                '      "section_name": "Plan Overview",\n'
+                '      "entities": [\n'
+                '        {\n'
+                '          "entity_name": "Individual Deductible",\n'
+                '          "doc_a_value": "$1,500",\n'
+                '          "doc_b_value": "$1,500",\n'
+                '          "validation_type": "exact_match",\n'
+                '          "validation_result": "match"\n'
+                '        }\n'
+                '      ]\n'
+                '    }\n'
+                '  ]\n'
+                '}',
+                language="json",
+            )
+
+    # ── Only proceed when both files are uploaded ──────────────────────────────
+    if not gt_file or not pred_file:
+        st.info(
+            "⬆️ Upload both files to compute evaluation metrics."
+        )
+        return
+
+    # ── Parse JSON files ───────────────────────────────────────────────────────
+    try:
+        gt_data   = json.loads(gt_file.read().decode("utf-8"))
+        pred_data = json.loads(pred_file.read().decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        st.error(f"❌ JSON parse error: {exc}")
+        return
+
+    gt_entities   = _load_entities(gt_data)
+    pred_entities = _load_entities(pred_data)
+
+    if not gt_entities:
+        st.error("Ground truth file contains no entities.")
+        return
+    if not pred_entities:
+        st.error("Solution output file contains no entities.")
+        return
+
+    gt_index   = _build_entity_index(gt_entities)
+    pred_index = _build_entity_index(pred_entities)
+
+    # ── Compute metrics ────────────────────────────────────────────────────────
+    cm, labels, rows, extra_in_pred = compute_confusion_matrix(gt_index, pred_index)
+    metrics          = compute_metrics(cm, labels)
+    overall          = metrics["__overall__"]
+
+    # ── Top-level summary cards ────────────────────────────────────────────────
+    st.divider()
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1.metric("GT Entities",   len(rows))
+    c2.metric("Correct",       overall["correct"])
+    c3.metric("Errors",        overall["total_entities"] - overall["correct"])
+    c4.metric("Accuracy",      f"{overall['accuracy']:.1%}")
+    c5.metric("Macro F1",      f"{overall['macro_f1']:.3f}")
+    c6.metric("Ignored Extras", len(extra_in_pred))   # ← replaces "GT Entities" dupe
+
+    st.progress(
+        overall["accuracy"],
+        text=f"Overall Accuracy: {overall['accuracy']:.2%}  |  "
+             f"Macro Precision: {overall['macro_p']:.3f}  |  "
+             f"Macro Recall: {overall['macro_r']:.3f}",
+    )
+
+    st.divider()
+
+    # ── Main content in tabs ───────────────────────────────────────────────────
+    tab_cm, tab_metrics, tab_entities, tab_types, tab_json = st.tabs([
+        "🔲 Confusion Matrix",
+        "📐 Per-Class Metrics",
+        "📋 Entity Detail",
+        "🏷️ By Validation Type",
+        "📄 Raw JSON Diff",
+    ])
+
+    # ── TAB 1: Confusion Matrix ────────────────────────────────────────────────
+    with tab_cm:
+        st.markdown("### Confusion Matrix")
+        st.caption(
+            "Rows = Ground Truth label · Columns = Predicted label · "
+            "Colour intensity = row-normalised percentage."
+        )
+        _render_confusion_matrix_plotly(cm, labels)
+
+        # Raw counts table below the heatmap
+        with st.expander("Raw counts", expanded=False):
+            df_raw = pd.DataFrame(
+                cm,
+                index=[f"GT: {l}" for l in labels],
+                columns=[f"Pred: {l}" for l in labels],
+            )
+            st.dataframe(df_raw, use_container_width=True)
+
+        # Error analysis
+        st.markdown("### Common Error Patterns")
+        error_rows = [r for r in rows if not r["correct"]]
+        if error_rows:
+            error_counts: dict[tuple, int] = defaultdict(int)
+            for r in error_rows:
+                error_counts[(r["gt_result"], r["pred_result"])] += 1
+            sorted_errors = sorted(error_counts.items(), key=lambda x: -x[1])
+            for (gt_lbl, pred_lbl), count in sorted_errors:
+                pct = count / len(rows) * 100
+                st.markdown(
+                    f"- GT **`{gt_lbl}`** → Pred **`{pred_lbl}`** : "
+                    f"**{count}** entities ({pct:.1f}%)"
+                )
+        else:
+            st.success("🎉 No prediction errors found!")
+
+    # ── TAB 2: Per-Class Metrics ───────────────────────────────────────────────
+    with tab_metrics:
+        st.markdown("### Per-Class Precision / Recall / F1")
+
+        metric_rows = []
+        for lbl in labels:
+            m = metrics[lbl]
+            metric_rows.append({
+                "Class":     lbl,
+                "Support":   m["support"],
+                "Precision": m["precision"],
+                "Recall":    m["recall"],
+                "F1":        m["f1"],
+            })
+
+        # Macro / weighted rows
+        metric_rows.append({
+            "Class":     "── macro avg ──",
+            "Support":   overall["total_entities"],
+            "Precision": overall["macro_p"],
+            "Recall":    overall["macro_r"],
+            "F1":        overall["macro_f1"],
+        })
+
+        df_metrics = pd.DataFrame(metric_rows)
+
+        def _f1_bar(val):
+            """Colour F1 score cells by magnitude."""
+            try:
+                v = float(val)
+                if v >= 0.9:  return "background-color:#f0fdf4; color:#15803d; font-weight:bold"
+                if v >= 0.7:  return "background-color:#fefce8; color:#b45309; font-weight:bold"
+                if v >  0.0:  return "background-color:#fff2f2; color:#b91c1c; font-weight:bold"
+            except Exception:
+                pass
+            return ""
+
+        st.dataframe(
+            df_metrics.style.map(
+                _f1_bar, subset=["Precision", "Recall", "F1"]
+            ).format({"Precision": "{:.4f}", "Recall": "{:.4f}", "F1": "{:.4f}"}),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        # Coverage stats
+        st.divider()
+        st.markdown("### Coverage Statistics")
+
+        in_pred      = sum(1 for r in rows if r["in_pred"])
+        missing_pred = sum(1 for r in rows if not r["in_pred"])
+
+        cov_col1, cov_col2, cov_col3 = st.columns(3)
+        cov_col1.metric("GT Entities (scored)",    len(rows))
+        cov_col2.metric("Found in Prediction",     in_pred)
+        cov_col3.metric(
+            "Missing from Prediction",
+            missing_pred,
+            delta=f"-{missing_pred}" if missing_pred else None,
+            delta_color="inverse",
+        )
+
+        if extra_in_pred:
+            st.info(
+                f"**{len(extra_in_pred)} extra entity/entities** in the prediction "
+                f"were **ignored** (not present in ground truth): "
+                + ", ".join(f"`{n}`" for n in extra_in_pred[:10])
+                + (f" … and {len(extra_in_pred) - 10} more" if len(extra_in_pred) > 10 else "")
+            )
+    # ── TAB 3: Entity Detail ───────────────────────────────────────────────────
+    with tab_entities:
+        st.markdown("### Per-Entity Comparison")
+
+        filter_opts = [
+            "All",
+            "Errors only",
+            "Matches only",
+            "Missing from prediction",   # GT entity not found in pred output
+        ]
+        filter_col1, filter_col2 = st.columns([2, 2])
+        with filter_col1:
+            filter_mode = st.selectbox("Filter", filter_opts, key="mv_filter")
+        with filter_col2:
+            search_term = st.text_input(
+                "Search entity name", placeholder="e.g. document_title", key="mv_search"
+            )
+
+        display_rows = rows
+        if search_term:
+            display_rows = [
+                r for r in display_rows
+                if search_term.lower() in r["entity_name"].lower()
+            ]
+
+        _render_entity_table(display_rows, filter_mode)
+
+        # Download entity comparison as CSV
+        download_rows = [
+            {
+                "entity_name":    r["entity_name"],
+                "gt_result":      r["gt_result"],
+                "pred_result":    r["pred_result"],
+                "correct":        r["correct"],
+                "gt_type":        r["gt_type"],
+                "pred_type":      r["pred_type"],
+                "gt_doc_a_value": r["gt_doc_a"],
+                "gt_doc_b_value": r["gt_doc_b"],
+                "pred_doc_a_value": r["pred_doc_a"],
+                "pred_doc_b_value": r["pred_doc_b"],
+            }
+            for r in rows
+        ]
+        csv_data = pd.DataFrame([
+            {
+                "entity_name":      r["entity_name"],
+                "gt_result":        r["gt_result"],
+                "pred_result":      r["pred_result"],
+                "correct":          r["correct"],
+                "gt_type":          r["gt_type"],
+                "pred_type":        r["pred_type"],
+                "in_pred":          r["in_pred"],       # in_gt removed (always True now)
+                "gt_doc_a_value":   r["gt_doc_a"],
+                "gt_doc_b_value":   r["gt_doc_b"],
+                "pred_doc_a_value": r["pred_doc_a"],
+                "pred_doc_b_value": r["pred_doc_b"],
+            }
+            for r in rows
+        ]).to_csv(index=False)
+        st.download_button(
+            "⬇️ Download Entity Comparison CSV",
+            data=csv_data,
+            file_name="entity_comparison.csv",
+            mime="text/csv",
+        )
+
+    # ── TAB 4: By Validation Type ──────────────────────────────────────────────
+    with tab_types:
+        st.markdown("### Accuracy by Validation Type (Ground Truth)")
+        st.caption(
+            "Shows how well the model performs across different "
+            "comparison scenarios: exact_match, semantic_match, conflict."
+        )
+        _render_type_breakdown(rows)
+
+        # Predicted type distribution
+        st.divider()
+        st.markdown("### Predicted Type Distribution")
+        pred_type_counts: dict[str, int] = defaultdict(int)
+        for r in rows:
+            pred_type_counts[r["pred_type"]] += 1
+        if pred_type_counts:
+            df_pred_dist = pd.DataFrame(
+                [{"Predicted Type": t, "Count": c}
+                 for t, c in sorted(pred_type_counts.items(), key=lambda x: -x[1])]
+            )
+            st.dataframe(df_pred_dist, use_container_width=True, hide_index=True)
+
+    # ── TAB 5: Raw JSON Diff ───────────────────────────────────────────────────
+    with tab_json:
+        st.markdown("### Raw JSON Preview")
+
+        col_j1, col_j2 = st.columns(2)
+        with col_j1:
+            st.markdown("**Ground Truth** (first 30 entities)")
+            preview_gt = {"entities": gt_entities[:30]}
+            st.code(
+                json.dumps(preview_gt, indent=2)[:3000] + (
+                    "\n  … (truncated)" if len(json.dumps(preview_gt)) > 3000 else ""
+                ),
+                language="json",
+            )
+        with col_j2:
+            st.markdown("**Solution Output** (first 30 entities)")
+            preview_pred = {"entities": pred_entities[:30]}
+            st.code(
+                json.dumps(preview_pred, indent=2)[:3000] + (
+                    "\n  … (truncated)" if len(json.dumps(preview_pred)) > 3000 else ""
+                ),
+                language="json",
+            )
+
+        st.divider()
+        st.markdown("### Download Full Evaluation Report")
+        eval_report = {
+            "summary": {
+                "accuracy":         overall["accuracy"],
+                "macro_f1":         overall["macro_f1"],
+                "macro_precision":  overall["macro_p"],
+                "macro_recall":     overall["macro_r"],
+                "total_entities":   overall["total_entities"],
+                "correct":          overall["correct"],
+                "errors":           overall["total_entities"] - overall["correct"],
+            },
+            "per_class_metrics": {
+                lbl: metrics[lbl] for lbl in labels
+            },
+            "confusion_matrix": {
+                "labels": labels,
+                "matrix": cm.tolist(),
+            },
+            "per_entity_results": [
+                {
+                    "entity_name":  r["entity_name"],
+                    "gt_result":    r["gt_result"],
+                    "pred_result":  r["pred_result"],
+                    "correct":      r["correct"],
+                    "gt_type":      r["gt_type"],
+                    "pred_type":    r["pred_type"],
+                }
+                for r in rows
+            ],
+        }
+        st.download_button(
+            "⬇️ Download Full Evaluation Report (JSON)",
+            data=json.dumps(eval_report, indent=2),
+            file_name="evaluation_report.json",
+            mime="application/json",
+        )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab: 🔧 Fine-Tune Entities
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _ft_api_get(path: str) -> dict | None:
+    """GET with targeted error display for fine-tune calls."""
+    try:
+        r = requests.get(f"{API_BASE}{path}", timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as exc:
+        try:
+            detail = exc.response.json().get("detail", str(exc))
+        except Exception:
+            detail = str(exc)
+        st.error(f"API {exc.response.status_code}: {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Request failed: {exc}")
+        return None
+
+
+def _ft_api_patch(path: str, payload: dict) -> dict | None:
+    """PATCH JSON for fine-tune save calls."""
+    try:
+        r = requests.patch(f"{API_BASE}{path}", json=payload, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as exc:
+        try:
+            detail = exc.response.json().get("detail", str(exc))
+        except Exception:
+            detail = str(exc)
+        st.error(f"API {exc.response.status_code}: {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Request failed: {exc}")
+        return None
+
+
+def _ft_api_post_files(path: str, files: dict, data: dict) -> dict | None:
+    """POST multipart for extraction preview calls."""
+    try:
+        r = requests.post(
+            f"{API_BASE}{path}", files=files, data=data, timeout=300
+        )
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as exc:
+        try:
+            detail = exc.response.json().get("detail", str(exc))
+        except Exception:
+            detail = str(exc)
+        st.error(f"API {exc.response.status_code}: {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Request failed: {exc}")
+        return None
+
+
+# ── Session-state helpers ──────────────────────────────────────────────────────
+
+def _ft_state(key: str, default=None):
+    """Get a fine-tune scoped session state value."""
+    full_key = f"ft_{key}"
+    if full_key not in st.session_state:
+        st.session_state[full_key] = default
+    return st.session_state[full_key]
+
+
+def _ft_set(key: str, value):
+    st.session_state[f"ft_{key}"] = value
+
+
+def _ft_reset_from(key: str):
+    """Clear all downstream state when an upstream selector changes."""
+    order = [
+        "config_name", "section_name",
+        "entities_original", "entities_edited",
+        "test_file_bytes", "test_file_name",
+        "preview_result", "gt_data",
+        "confirm_ready",
+    ]
+    idx = order.index(key) if key in order else len(order)
+    for k in order[idx + 1:]:
+        st.session_state.pop(f"ft_{k}", None)
+
+
+# ── Sub-component renderers ────────────────────────────────────────────────────
+
+def _ft_render_step_bar(current: int) -> None:
+    """Render a compact 5-step progress indicator."""
+    steps = [
+        (1, "Select Config"),
+        (2, "Select Section"),
+        (3, "Edit Descriptions"),
+        (4, "Preview & Compare"),
+        (5, "Save Config"),
+    ]
+    cols = st.columns(len(steps))
+    for col, (num, label) in zip(cols, steps):
+        if num < current:
+            icon, bg, fg = "✓", "#eef6ff", "#0b3b66"
+        elif num == current:
+            icon, bg, fg = str(num), "#eaf6f0", "#0b6a4a"
+        else:
+            icon, bg, fg = str(num), "#f3f5f9", "#94a3b8"
+        col.markdown(
+            f"""
+            
+                {icon}
+                {label}
+            
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def _ft_render_entity_editor(entities: list[dict]) -> list[dict]:
+    """
+    Render an inline editor for entity descriptions.
+    Returns the edited list of entity dicts.
+    """
+    edited = []
+
+    # Header row
+    h1, h2, h3, h4 = st.columns([1.8, 3.5, 1.5, 1.0])
+    h1.markdown(
+        'ENTITY NAME',
+        unsafe_allow_html=True,
+    )
+    h2.markdown(
+        'DESCRIPTION (editable)',
+        unsafe_allow_html=True,
+    )
+    h3.markdown(
+        'EXAMPLE VALUE (editable)',
+        unsafe_allow_html=True,
+    )
+    h4.markdown(
+        'LOGIC',
         unsafe_allow_html=True,
     )
 
+    st.divider()
 
-# ════════════════════════════════════════════════════════
-#  Sidebar
-# ════════════════════════════════════════════════════════
+    for ent in entities:
+        c1, c2, c3, c4 = st.columns([1.8, 3.5, 1.5, 1.0])
 
-with st.sidebar:
-    st.markdown("## ⚡ CMSVS Workflow")
-    st.markdown("---")
-    st.markdown("""
-**End-to-end pipeline**
-```
-STEP 1 — Upload docs
-   ↓
-STEP 2 — Load & OCR
-   ↓
-STEP 3 — Review OCR
-   ↓
-STEP 4 — Enter values
-   ↓
-STEP 5 — Validate
-   ↓
-STEP 6 — Export report
-```
-    """)
-    st.markdown("---")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        placeholder="sk-ant-…",
-        help="Required for MLLM CoT (non-fast-path comparisons).",
-    )
-    st.markdown("---")
-    ocr_backend = st.radio(
-        "OCR Backend",
-        ["Auto (pytesseract / mock)", "PaddleOCR"],
-        index=0,
-    )
-    st.markdown("---")
-    st.markdown("""
-<small style='color:#64748b'>
-<b>Fast path</b>: no API call<br>
-<b>MLLM CoT</b>: 1 call per entity<br>
-<b>INELIGIBLE</b>: no API call
-</small>
-""", unsafe_allow_html=True)
+        with c1:
+            st.markdown(
+                f''
+                f'{ent["entity_name"]}',
+                unsafe_allow_html=True,
+            )
 
-    # Button to hide (close) the sidebar — toggles session state and reruns
-    if st.button("Close sidebar"):  # small UX affordance
-        st.session_state["sidebar_collapsed"] = True
-        st.experimental_rerun()
+        with c2:
+            new_desc = st.text_area(
+                label=f"desc_{ent['entity_name']}",
+                value=ent["entity_description"],
+                height=80,
+                label_visibility="collapsed",
+                key=f"ft_edit_desc_{ent['entity_name']}",
+                help="Edit the extraction description the LLM uses to find this entity.",
+            )
 
+        with c3:
+            new_example = st.text_input(
+                label=f"ex_{ent['entity_name']}",
+                value=ent["entity_example_value"],
+                label_visibility="collapsed",
+                key=f"ft_edit_ex_{ent['entity_name']}",
+                help="Example value that guides the LLM.",
+            )
 
-# ════════════════════════════════════════════════════════
-#  Header & progress
-# ════════════════════════════════════════════════════════
+        with c4:
+            logic_color = "#0b6a4a" if ent["entity_extraction_logic"] == "DIRECT" else "#7a3f00"
+            logic_bg    = "#eaf6f0" if ent["entity_extraction_logic"] == "DIRECT" else "#fff7ed"
+            st.markdown(
+                f''
+                f'{ent["entity_extraction_logic"]}',
+                unsafe_allow_html=True,
+            )
 
-# If sidebar is collapsed show a small 'Open sidebar' button in the main area
-if st.session_state.get("sidebar_collapsed", False):
-    if st.button("☰ Open sidebar"):
-        st.session_state["sidebar_collapsed"] = False
-        st.experimental_rerun()
+        edited.append({
+            "entity_name":              ent["entity_name"],
+            "entity_description":       new_desc,
+            "entity_extraction_logic":  ent["entity_extraction_logic"],
+            "entity_example_value":     new_example,
+            "data_type":                ent["data_type"],
+        })
 
-st.markdown("# ⚡ CMSVS Workflow")
-st.markdown('<p style="color:#64748b;font-size:0.9rem;margin-top:-10px'>
-            'End-to-end document validation — upload → OCR → validate → export</p>',
-            unsafe_allow_html=True)
-
-# Determine current workflow step from session state
-def _step_class(step_num: int, current: int) -> str:
-    if step_num < current: return "done"
-    if step_num == current: return "active"
-    return ""
-
-def _step_label(num: int, label: str, current: int) -> str:
-    cls = _step_class(num, current)
-    prefix = "✓ " if num < current else f"{num}. "
-    return (f'<div class="wf-step {cls}">'
-            f'<span class="step-num">{prefix}</span>{label}</div>')
-
-# Infer step
-def current_step() -> int:
-    if "validation_report" in st.session_state: return 6
-    if "entity_inputs"     in st.session_state: return 5
-    if "ocr_pages_a"       in st.session_state or "ocr_pages_b" in st.session_state: return 4
-    if "loaded_a"          in st.session_state or "loaded_b"    in st.session_state: return 3
-    if "uploaded_a"        in st.session_state or "uploaded_b"  in st.session_state: return 2
-    return 1
-
-step = current_step()
-
-st.markdown(
-    '<div class="workflow-steps">'
-    + _step_label(1, "Upload", step)
-    + _step_label(2, "Load", step)
-    + _step_label(3, "OCR Review", step)
-    + _step_label(4, "Values", step)
-    + _step_label(5, "Validate", step)
-    + _step_label(6, "Export", step)
-    + '</div>',
-    unsafe_allow_html=True,
-)
-
-
-# ════════════════════════════════════════════════════════
-#  STEP 1 — Upload documents
-# ════════════════════════════════════════════════════════
-
-with st.expander("📁 Step 1 — Upload Documents", expanded=(step == 1)):
-    st.markdown("Upload **Doc A** and **Doc B** (PDF or image). Or generate demo assets below.")
-
-    demo_c1, demo_c2 = st.columns(2)
-    with demo_c1:
-        if st.button("📄 Generate Demo PDF"):
-            tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-            make_demo_pdf(Path(tmp.name))
-            with open(tmp.name,"rb") as f:
-                st.session_state["demo_pdf_bytes"] = f.read()
-            st.success("Demo PDF ready — download and re-upload above ✓")
-        if "demo_pdf_bytes" in st.session_state:
-            st.download_button("⬇ Download Demo PDF", st.session_state["demo_pdf_bytes"],
-                               file_name="demo_policy.pdf", mime="application/pdf")
-    with demo_c2:
-        if st.button("🖼️ Generate Demo Image"):
-            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-            make_demo_image(Path(tmp.name))
-            with open(tmp.name,"rb") as f:
-                st.session_state["demo_img_bytes"] = f.read()
-            st.success("Demo image ready — download and re-upload above ✓")
-        if "demo_img_bytes" in st.session_state:
-            st.download_button("⬇ Download Demo Image", st.session_state["demo_img_bytes"],
-                               file_name="demo_card.png", mime="image/png")
-
-    st.markdown("---")
-    uc1, uc2 = st.columns(2)
-    with uc1:
-        st.markdown("**Doc A**")
-        file_a = st.file_uploader("Upload Doc A", type=["pdf","jpg","jpeg","png","tiff","tif","bmp","webp"],
-                                   key="fu_a", label_visibility="collapsed")
-        if file_a:
-            st.session_state["uploaded_a"] = file_a
-            st.success(f"✓ {file_a.name}")
-    with uc2:
-        st.markdown("**Doc B**")
-        file_b = st.file_uploader("Upload Doc B", type=["pdf","jpg","jpeg","png","tiff","tif","bmp","webp"],
-                                   key="fu_b", label_visibility="collapsed")
-        if file_b:
-            st.session_state["uploaded_b"] = file_b
-            st.success(f"✓ {file_b.name}")
-
-    if "uploaded_a" in st.session_state and "uploaded_b" in st.session_state:
-        st.info("Both documents uploaded. Proceed to **Step 2 — Load & OCR** below.")
-
-
-# ════════════════════════════════════════════════════════
-#  STEP 2 — Load & OCR
-# ════════════════════════════════════════════════════════
-
-with st.expander("🔬 Step 2 — Load & OCR", expanded=(step == 2)):
-    if "uploaded_a" not in st.session_state or "uploaded_b" not in st.session_state:
-        st.info("Complete Step 1 first — upload both documents.")
-    else:
-        st.markdown("Click **Run Load & OCR** to detect file types, render pages, and extract text.")
-        if st.button("▶ Run Load & OCR", use_container_width=True):
-            def _process(uploaded_file, label: str):
-                suffix = Path(uploaded_file.name).suffix
-                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                    tmp.write(uploaded_file.read())
-                    tmp_path = Path(tmp.name)
-                input_type = detect_input_type(tmp_path)
-                with st.spinner(f"Loading {label}…"):
-                    loaded = load(tmp_path)
-                if input_type == InputType.PDF:
-                    with st.spinner(f"Running OCR on {label}…"):
-                        if "PaddleOCR" in ocr_backend:
-                            pages = ocr_paddle(tmp_path)
-                        else:
-                            pages = [ocr_page_text_only(loaded.page_images[i])
-                                     for i in sorted(loaded.page_images)]
-                else:
-                    pages = []
-                try: os.unlink(tmp_path)
-                except Exception: pass
-                return input_type, loaded, pages
-
-            fa = st.session_state["uploaded_a"]
-            fb = st.session_state["uploaded_b"]
-            fa.seek(0); fb.seek(0)
-
-            type_a, loaded_a, pages_a = _process(fa, "Doc A")
-            type_b, loaded_b, pages_b = _process(fb, "Doc B")
-
-            st.session_state["type_a"]       = type_a
-            st.session_state["loaded_a"]     = loaded_a
-            st.session_state["ocr_pages_a"]  = pages_a
-            st.session_state["type_b"]       = type_b
-            st.session_state["loaded_b"]     = loaded_b
-            st.session_state["ocr_pages_b"]  = pages_b
-            st.success("Load & OCR complete ✓ Continue to Step 3.")
-
-        if "loaded_a" in st.session_state:
-            rc1, rc2 = st.columns(2)
-            for col, lbl, t, ld in [
-                (rc1,"Doc A", st.session_state["type_a"], st.session_state["loaded_a"]),
-                (rc2,"Doc B", st.session_state["type_b"], st.session_state["loaded_b"]),
-            ]:
-                with col:
-                    badge_cls  = "badge-pdf" if t == InputType.PDF else "badge-image"
-                    badge_text = t.value.upper()
-                    st.markdown(
-                        f'<div class="card">'
-                        f'<span class="badge {badge_cls}">{badge_text}</span> '
-                        f'<b>{lbl}</b> — {ld.total_pages} page(s)'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                    pg = ld.page_images[1]
-                    st.image(pg.image, caption=f"{lbl} — Page 1", use_container_width=True)
-
-
-# ════════════════════════════════════════════════════════
-#  STEP 3 — OCR Review
-# ════════════════════════════════════════════════════════
-
-with st.expander("📑 Step 3 — OCR Review & Index Text", expanded=(step == 3)):
-    if "ocr_pages_a" not in st.session_state:
-        st.info("Complete Step 2 first.")
-    else:
-        tabs3 = st.tabs(["Doc A — OCR", "Doc B — OCR"])
-        for tab, lbl, pages in [
-            (tabs3[0], "Doc A", st.session_state["ocr_pages_a"]),
-            (tabs3[1], "Doc B", st.session_state["ocr_pages_b"]),
-        ]:
-            with tab:
-                if not pages:
-                    t = st.session_state.get("type_a" if lbl == "Doc A" else "type_b")
-                    ld = st.session_state.get("loaded_a" if lbl == "Doc A" else "loaded_b")
-                    st.markdown(
-                        f'<div class="card card-blue">'
-                        f'<span class="badge badge-image">IMAGE</span> '
-                        f'Image inputs bypass OCR and go directly to the MLLM. '
-                        f'Size: {ld.page_images[1].image.size[0]}×{ld.page_images[1].image.size[1]}'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    for sp in pages:
-                        with st.expander(f"Page {sp.page_number}", expanded=(sp.page_number == 1)):
-                            oc1, oc2 = st.columns(2)
-                            with oc1:
-                                st.markdown('<span class="badge badge-ocr">Headers</span>', unsafe_allow_html=True)
-                                if sp.section_headers:
-                                    for h in sp.section_headers: st.markdown(f"- `{h}`")
-                                else:
-                                    st.markdown('<span style="color:#64748b;font-size:0.82rem">None detected</span>', unsafe_allow_html=True)
-                            with oc2:
-                                st.markdown('<span class="badge badge-ocr">Key-Value Pairs</span>', unsafe_allow_html=True)
-                                if sp.key_value_pairs:
-                                    rows = "".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k,v in sp.key_value_pairs.items())
-                                    st.markdown(f'<table class="kv-table"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>{rows}</tbody></table>',
-                                                unsafe_allow_html=True)
-                                else:
-                                    st.markdown('<span style="color:#64748b;font-size:0.82rem">None detected</span>', unsafe_allow_html=True)
-                            st.markdown("**Index text** (RAG payload):")
-                            hi = highlight_numbers(sp.index_text)
-                            st.markdown(f'<div class="index-box">{hi}</div>', unsafe_allow_html=True)
-
-
-# ════════════════════════════════════════════════════════
-#  STEP 4 — Enter Entity Values
-# ════════════════════════════════════════════════════════
-
-with st.expander("📝 Step 4 — Enter Entity Values", expanded=(step == 4)):
-    if "loaded_a" not in st.session_state:
-        st.info("Complete Steps 1–2 first.")
-    else:
-        st.markdown("Edit extracted values for Doc A and Doc B. Use a preset to populate quickly.")
-        preset_name = st.selectbox("Load preset", list(DEMO_PRESETS.keys()), key="preset_sel4")
-        preset = DEMO_PRESETS[preset_name]
-
-        entity_inputs: Dict[str, Tuple[str,str]] = {}
         st.markdown(
-            '<div class="result-row" style="background:#ffffff;font-family:Space Mono,monospace;font-size:0.7rem;color:#64748b;">'
-            '<span style="flex:2">ENTITY</span><span style="flex:3">DOC A VALUE</span><span style="flex:3">DOC B VALUE</span>'
-            '</div>',
+            '',
             unsafe_allow_html=True,
         )
-        for cfg in DEMO_ENTITY_CONFIGS:
-            name     = cfg["name"]
-            defaults = preset.get(name, ("",""))
-            ec1, ec2, ec3 = st.columns([2,3,3])
-            with ec1:
-                st.markdown(f'<div style="padding:0.4rem 0;color:#0b3b66;font-size:0.88rem">{name}</div>', unsafe_allow_html=True)
-            with ec2:
-                va = st.text_input(f"A·{name}", value=defaults[0], key=f"w4a_{name}", label_visibility="collapsed")
-            with ec3:
-                vb = st.text_input(f"B·{name}", value=defaults[1], key=f"w4b_{name}", label_visibility="collapsed")
-            entity_inputs[name] = (va, vb)
 
-        if st.button("💾 Save Entity Values", use_container_width=True):
-            st.session_state["entity_inputs"] = entity_inputs
-            st.success("Values saved ✓ Continue to Step 5 — Validate.")
+    return edited
 
 
-# ════════════════════════════════════════════════════════
-#  STEP 5 — Run Validation
-# ════════════════════════════════════════════════════════
+def _ft_render_diff_badge(original: str, current: str) -> str:
+    """Return an HTML badge showing whether a description changed."""
+    if original.strip() == current.strip():
+        return 'unchanged'
+    return 'EDITED'
 
-with st.expander("⚖️ Step 5 — Run Validation", expanded=(step == 5)):
-    if "entity_inputs" not in st.session_state:
-        st.info("Complete Step 4 first — save entity values.")
-    else:
-        st.markdown("Run the semantic validator. Fast-path pairs skip the MLLM; mismatches use Claude CoT.")
-        if st.button("▶ Run Full Validation", use_container_width=True):
-            entity_inputs = st.session_state["entity_inputs"]
-            validator = SemanticValidator(api_key=api_key)
-            extractions_a: Dict[str, FinalEntityValue] = {}
-            extractions_b: Dict[str, FinalEntityValue] = {}
-            for cfg in DEMO_ENTITY_CONFIGS:
-                name  = cfg["name"]
-                va, vb = entity_inputs.get(name, ("",""))
-                extractions_a[name] = FinalEntityValue(name, va, status="INELIGIBLE" if not va.strip() else "OK")
-                extractions_b[name] = FinalEntityValue(name, vb, status="INELIGIBLE" if not vb.strip() else "OK")
-            with st.spinner("Validating — MLLM calls may take a moment…"):
-                report = validator.validate(extractions_a, extractions_b, "workflow_pair_001", DEMO_ENTITY_CONFIGS)
-            st.session_state["validation_report"] = report
-            st.success("Validation complete ✓ See results below and export in Step 6.")
 
-        if "validation_report" in st.session_state:
-            report: ValidationReport = st.session_state["validation_report"]
-            s = report.summary
+def _ft_render_preview_vs_gt(
+    preview_entities: list[dict],
+    gt_index: dict[str, dict],
+    original_entities: list[dict],
+    edited_entities: list[dict],
+) -> None:
+    """
+    Side-by-side comparison:
+    Left  — extraction result with edited description
+    Right — ground truth value (if GT was uploaded)
+    """
+    orig_map = {e["entity_name"]: e for e in original_entities}
+    edit_map = {e["entity_name"]: e for e in edited_entities}
+
+    STATUS_ICON = {
+        "FOUND":     ("✅", "#eaf6f0"),
+        "NOT_FOUND": ("❌", "#fff2f2"),
+        "AMBIGUOUS": ("⚠️", "#fff8f0"),
+        "ERROR":     ("🔴", "#fff2f2"),
+    }
+
+    MATCH_ICON = {
+        "exact":   ("🎯", "#eaf6f0", "EXACT"),
+        "close":   ("〰️", "#fefce8", "CLOSE"),
+        "missing": ("❓", "#f8fafc", "NO GT"),
+        "diff":    ("❌", "#fff2f2", "DIFF"),
+    }
+
+    # Column headers
+    h0, h1, h2, h3, h4, h5 = st.columns([1.6, 2.2, 1.0, 2.2, 1.0, 0.8])
+    for col, label in zip(
+        [h0, h1, h2, h3, h4, h5],
+        ["ENTITY", "EXTRACTED VALUE", "CONFIDENCE", "GT VALUE", "MATCH", "DESC"],
+    ):
+        col.markdown(
+            f'{label}',
+            unsafe_allow_html=True,
+        )
+    st.divider()
+
+    for ent in preview_entities:
+        name          = ent["entity_name"]
+        extracted     = ent.get("extracted_value") or "—"
+        status_raw    = (ent.get("extraction_status") or "NOT_FOUND").upper()
+        confidence    = float(ent.get("confidence", 0.0))
+        review_flag   = ent.get("review_required", False)
+
+        # Ground truth lookup
+        gt_ent    = gt_index.get(name, {})
+        gt_val_a  = gt_ent.get("doc_a_value", "")
+        gt_val_b  = gt_ent.get("doc_b_value", "")
+        gt_display = gt_val_a or gt_val_b or ""
+
+        # Determine match quality
+        if not gt_display:
+            match_key = "missing"
+        elif extracted == "—" or extracted is None:
+            match_key = "diff"
+        else:
+            ext_lower = extracted.strip().lower()
+            gt_lower  = gt_display.strip().lower()
+            if ext_lower == gt_lower:
+                match_key = "exact"
+            elif (ext_lower in gt_lower or gt_lower in ext_lower
+                  or _ft_levenshtein_ratio(ext_lower, gt_lower) > 0.75):
+                match_key = "close"
+            else:
+                match_key = "diff"
+
+        match_icon, match_bg, match_label = MATCH_ICON[match_key]
+        status_icon, status_bg = STATUS_ICON.get(status_raw, ("?", "#f8fafc"))
+
+        # Confidence colour
+        if confidence >= 0.85:   conf_color = "#15803d"
+        elif confidence >= 0.60: conf_color = "#b45309"
+        else:                    conf_color = "#b91c1c"
+
+        # Description changed badge
+        orig_desc = orig_map.get(name, {}).get("entity_description", "")
+        edit_desc = edit_map.get(name, {}).get("entity_description", "")
+        desc_badge = _ft_render_diff_badge(orig_desc, edit_desc)
+
+        row_bg = match_bg
+
+        c0, c1, c2, c3, c4, c5 = st.columns([1.6, 2.2, 1.0, 2.2, 1.0, 0.8])
+
+        with c0:
+            flag = " 🔍" if review_flag else ""
             st.markdown(
-                f'<div class="summary-grid">'
-                f'<div class="summary-card"><div class="summary-num" style="color:#0b6a4a">{s.get("MATCH",0)}</div><div class="summary-label">MATCH</div></div>'
-                f'<div class="summary-card"><div class="summary-num" style="color:#b91c1c">{s.get("MISMATCH",0)}</div><div class="summary-label">MISMATCH</div></div>'
-                f'<div class="summary-card"><div class="summary-num" style="color:#b45309">{s.get("PARTIAL_MATCH",0)}</div><div class="summary-label">PARTIAL</div></div>'
-                f'<div class="summary-card"><div class="summary-num" style="color:#64748b">{s.get("INELIGIBLE",0)}</div><div class="summary-label">INELIGIBLE</div></div>'
-                f'<div class="summary-card"><div class="summary-num" style="color:#0b6a4a">{s.get("fast_path_hits",0)}</div><div class="summary-label">FAST PATH</div></div>'
-                f'</div>',
+                f'{name}{flag}',
                 unsafe_allow_html=True,
             )
+
+        with c1:
             st.markdown(
-                '<div class="result-row" style="background:#ffffff;font-family:Space Mono,monospace;font-size:0.7rem;color:#64748b;">'
-                '<span class="entity-name">ENTITY</span>'
-                '<span class="val-a">DOC A</span>'
-                '<span class="val-b">DOC B</span>'
-                '<span class="status-badge">STATUS</span>'
-                '<span style="flex:0.8;font-size:0.7rem">PATH</span>'
-                '</div>',
+                f''
+                f'{status_icon} {extracted}',
                 unsafe_allow_html=True,
             )
-            for r in report.results:
-                sc       = r.validation_status.value
-                path_tag = '<span class="fp-tag">FAST</span>' if r.fast_path_used else '<span class="mllm-tag">MLLM</span>'
-                st.markdown(
-                    f'<div class="result-row">'
-                    f'<span class="entity-name">{r.entity_name}</span>'
-                    f'<span class="val-a">{r.value_a or "—"}</span>'
-                    f'<span class="val-b">{r.value_b or "—"}</span>'
-                    f'<span class="status-badge badge-{sc}">{status_icon(r.validation_status)} {sc}</span>'
-                    f'{path_tag}'
-                    f'</div>',
-                    unsafe_allow_html=True,
+
+        with c2:
+            st.markdown(
+                f'{confidence:.0%}',
+                unsafe_allow_html=True,
+            )
+
+        with c3:
+            st.markdown(
+                f''
+                f'{gt_display or "—"}',
+                unsafe_allow_html=True,
+            )
+
+        with c4:
+            st.markdown(
+                f'{match_icon} {match_label}',
+                unsafe_allow_html=True,
+            )
+
+        with c5:
+            st.markdown(
+                f''
+                f'{desc_badge}',
+                unsafe_allow_html=True,
+            )
+
+    # Summary metrics
+    st.divider()
+    total     = len(preview_entities)
+    found     = sum(1 for e in preview_entities
+                    if (e.get("extraction_status") or "").upper() == "FOUND")
+    exact_m   = sum(1 for e in preview_entities
+                    if gt_index.get(e["entity_name"], {}).get("doc_a_value","").strip().lower()
+                    == (e.get("extracted_value") or "").strip().lower()
+                    and e.get("extracted_value"))
+    avg_conf  = (sum(float(e.get("confidence",0)) for e in preview_entities) / total
+                 if total > 0 else 0.0)
+
+    sm1, sm2, sm3, sm4 = st.columns(4)
+    sm1.metric("Entities",    total)
+    sm2.metric("Extracted",   f"{found}/{total}")
+    sm3.metric("Exact Match", f"{exact_m}/{len(gt_index)}" if gt_index else f"{exact_m}")
+    sm4.metric("Avg Conf.",   f"{avg_conf:.0%}")
+
+
+def _ft_levenshtein_ratio(s1: str, s2: str) -> float:
+    """Fast normalised edit distance for fuzzy match detection."""
+    if not s1 and not s2:
+        return 1.0
+    if not s1 or not s2:
+        return 0.0
+    len1, len2 = len(s1), len(s2)
+    # Only use for short strings to keep it O(n*m) reasonable
+    if max(len1, len2) > 200:
+        return 0.0
+    dp = list(range(len2 + 1))
+    for i in range(1, len1 + 1):
+        prev, dp[0] = dp[0], i
+        for j in range(1, len2 + 1):
+            temp = dp[j]
+            if s1[i-1] == s2[j-1]:
+                dp[j] = prev
+            else:
+                dp[j] = 1 + min(prev, dp[j], dp[j-1])
+            prev = temp
+    return 1.0 - dp[len2] / max(len1, len2)
+
+
+def _ft_load_gt_index(gt_data: dict) -> dict[str, dict]:
+    """Reuse the same loader logic from manual validation tab."""
+    entities = _load_entities(gt_data)
+    return _build_entity_index(entities)
+
+
+# ── Main tab renderer ──────────────────────────────────────────────────────────
+
+def render_finetune_tab() -> None:
+    """Render the Entity Description Fine-Tuner tab."""
+
+    st.header("🔧 Fine-Tune Entity Descriptions")
+    st.caption(
+        "Edit entity descriptions section-by-section, preview extractions "
+        "against a test document, compare with ground truth, "
+        "and confirm saving to the config file."
+    )
+
+    # Determine current step for the progress bar
+    def _current_ft_step() -> int:
+        if f"ft_confirm_ready" in st.session_state: return 5
+        if f"ft_preview_result" in st.session_state: return 4
+        if f"ft_entities_edited" in st.session_state: return 3
+        if f"ft_section_name"    in st.session_state: return 2
+        if f"ft_config_name"     in st.session_state: return 1
+        return 1
+
+    _ft_render_step_bar(_current_ft_step())
+
+    st.divider()
+
+    # ── STEP 1 & 2: Config + Section selectors ─────────────────────────────────
+    st.markdown("### Step 1 — Select Config & Section")
+
+    sel_col1, sel_col2 = st.columns(2)
+
+    with sel_col1:
+        configs_data = _ft_api_get("/configs")
+        config_list  = configs_data.get("configs", []) if configs_data else []
+
+        if not config_list:
+            st.warning("No configs found. Create one in the Config Builder tab first.")
+            return
+
+        current_config = _ft_state("config_name")
+        config_idx = (
+            config_list.index(current_config)
+            if current_config in config_list else 0
+        )
+        selected_config = st.selectbox(
+            "Configuration",
+            options=config_list,
+            index=config_idx,
+            key="ft_sel_config",
+            help="Choose the YAML config whose entity descriptions you want to tune.",
+        )
+
+        if selected_config != _ft_state("config_name"):
+            _ft_reset_from("config_name")
+            _ft_set("config_name", selected_config)
+            st.rerun()
+
+    with sel_col2:
+        if not _ft_state("config_name"):
+            st.info("Select a config first.")
+        else:
+            sections_data = _ft_api_get(
+                f"/configs/{_ft_state('config_name')}/sections"
+            )
+            section_list = (
+                sections_data.get("sections", []) if sections_data else []
+            )
+
+            if not section_list:
+                st.warning("No sections found in this config.")
+            else:
+                current_section = _ft_state("section_name")
+                sec_idx = (
+                    section_list.index(current_section)
+                    if current_section in section_list else 0
+                )
+                selected_section = st.selectbox(
+                    "Section",
+                    options=section_list,
+                    index=sec_idx,
+                    key="ft_sel_section",
+                    help="Choose which section's entity descriptions to edit.",
                 )
 
-            st.markdown("---")
-            st.markdown("### Entity Detail")
-            sel = st.selectbox("Inspect entity", [r.entity_name for r in report.results])
-            sr  = next(r for r in report.results if r.entity_name == sel)
-            dc1, dc2 = st.columns(2)
-            with dc1:
-                st.markdown("**Normalized A:**")
-                st.markdown(f'<span class="norm-pill">{sr.normalized_a or sr.value_a}</span>', unsafe_allow_html=True)
-            with dc2:
-                st.markdown("**Normalized B:**")
-                st.markdown(f'<span class="norm-pill">{sr.normalized_b or sr.value_b}</span>', unsafe_allow_html=True)
-            if sr.discrepancy_type:
-                st.markdown(f"**Discrepancy type:** `{sr.discrepancy_type}`")
-            st.markdown(f"**Confidence:** `{sr.confidence:.2f}`")
-            if sr.requires_human_review:
-                st.warning("⚠️ Flagged for human review")
-            if sr.reasoning:
-                st.markdown("**CoT Reasoning:**")
-                st.markdown(f'<div class="cot-box">{sr.reasoning}</div>', unsafe_allow_html=True)
+                if selected_section != _ft_state("section_name"):
+                    _ft_reset_from("section_name")
+                    _ft_set("section_name", selected_section)
 
+                    # Auto-load entities for this section
+                    ents_data = _ft_api_get(
+                        f"/configs/{_ft_state('config_name')}"
+                        f"/sections/{selected_section}/entities"
+                    )
+                    if ents_data:
+                        entities = ents_data.get("entities", [])
+                        _ft_set("entities_original", entities)
+                        _ft_set("entities_edited",   entities)
+                    st.rerun()
 
-# ════════════════════════════════════════════════════════
-#  STEP 6 — Export
-# ════════════════════════════════════════════════════════
+    # Guard: need both config + section loaded
+    if not _ft_state("config_name") or not _ft_state("section_name"):
+        return
+    if not _ft_state("entities_original"):
+        st.info("Loading entities…")
+        return
 
-with st.expander("📦 Step 6 — Export Report", expanded=(step == 6)):
-    if "validation_report" not in st.session_state:
-        st.info("Complete Step 5 first — run validation.")
-    else:
-        report: ValidationReport = st.session_state["validation_report"]
-        st.markdown("Download the full validation report as JSON, or reset to start over.")
-        report_json = json.dumps({
-            "pair_id": report.pair_id,
-            "summary": report.summary,
-            "results": [
-                {
-                    "entity_name":        r.entity_name,
-                    "value_a":            r.value_a,
-                    "value_b":            r.value_b,
-                    "normalized_a":       r.normalized_a,
-                    "normalized_b":       r.normalized_b,
-                    "validation_status":  r.validation_status.value,
-                    "discrepancy_type":   r.discrepancy_type,
-                    "reasoning":          r.reasoning,
-                    "confidence":         r.confidence,
-                    "requires_human_review": r.requires_human_review,
-                    "fast_path_used":     r.fast_path_used,
-                }
-                for r in report.results
-            ],
-        }, indent=2)
+    st.divider()
 
-        st.download_button(
-            "⬇ Download JSON Report",
-            data=report_json,
-            file_name=f"{report.pair_id}_report.json",
-            mime="application/json",
-            use_container_width=True,
+    # ── STEP 3: Edit descriptions ──────────────────────────────────────────────
+    st.markdown(
+        f"### Step 2 — Edit Descriptions · "
+        f'{_ft_state("config_name")} / '
+        f'{_ft_state("section_name")}',
+        unsafe_allow_html=True,
+    )
+
+    # Quick-reset button
+    if st.button(
+        "↩ Reset to original descriptions",
+        key="ft_reset_desc",
+        help="Discard edits and reload from disk.",
+    ):
+        _ft_set("entities_edited", _ft_state("entities_original"))
+        st.rerun()
+
+    edited_entities = _ft_render_entity_editor(
+        _ft_state("entities_edited") or _ft_state("entities_original")
+    )
+    _ft_set("entities_edited", edited_entities)
+
+    # Show diff summary
+    n_changed = sum(
+        1 for orig, edit in zip(
+            _ft_state("entities_original"),
+            edited_entities,
         )
-        st.markdown("---")
-        st.markdown("**Preview:**")
-        st.code(report_json[:1200] + ("\n  … (truncated)" if len(report_json) > 1200 else ""),
-                language="json")
+        if orig["entity_description"].strip() != edit["entity_description"].strip()
+        or orig["entity_example_value"].strip() != edit["entity_example_value"].strip()
+    )
+    if n_changed:
+        st.info(f"✏️ {n_changed} entity description(s) have been edited.")
+    else:
+        st.success("No changes yet — descriptions match the saved config.")
 
-        st.markdown("---")
-        if st.button("🔄 Reset Workflow", use_container_width=True):
-            for k in ["uploaded_a","uploaded_b","type_a","type_b","loaded_a","loaded_b",
-                      "ocr_pages_a","ocr_pages_b","entity_inputs","validation_report",
-                      "demo_pdf_bytes","demo_img_bytes","last_report"]:
-                st.session_state.pop(k, None)
+    st.divider()
+
+    # ── STEP 4: Upload test document + optional GT ─────────────────────────────
+    st.markdown("### Step 3 — Upload Test Document")
+
+    up_col1, up_col2 = st.columns(2)
+
+    with up_col1:
+        st.markdown("**Test Document** (required)")
+        test_file = st.file_uploader(
+            "Upload document for extraction preview",
+            type=["pdf","png","jpg","jpeg","tiff","bmp","webp"],
+            key="ft_test_doc",
+            help="The LLM will extract entities from this document "
+                 "using your edited descriptions.",
+        )
+        if test_file:
+            _ft_set("test_file_bytes", test_file.getvalue())
+            _ft_set("test_file_name",  test_file.name)
+            _ft_set("test_file_type",  test_file.type)
+
+    with up_col2:
+        st.markdown("**Ground Truth JSON** (optional — for comparison)")
+        gt_file = st.file_uploader(
+            "Upload ground truth JSON",
+            type=["json"],
+            key="ft_gt_json",
+            help="Upload a FUNSD or SBC ground truth file to see "
+                 "how extracted values compare.",
+        )
+        if gt_file:
+            try:
+                gt_data = json.loads(gt_file.read().decode("utf-8"))
+                _ft_set("gt_data", gt_data)
+                n_gt = len(_load_entities(gt_data))
+                st.success(f"✓ Ground truth loaded — {n_gt} entities")
+            except json.JSONDecodeError:
+                st.error("Invalid JSON file.")
+
+    ft_confidence = st.slider(
+        "Confidence Threshold",
+        min_value=0.0, max_value=1.0, value=0.75, step=0.05,
+        key="ft_conf_slider",
+        help="Entities below this confidence will be flagged for review.",
+    )
+
+    # Run preview button
+    can_preview = bool(_ft_state("test_file_bytes"))
+    if st.button(
+        "▶ Run Extraction Preview",
+        type="primary",
+        disabled=not can_preview,
+        use_container_width=True,
+        key="ft_run_preview",
+    ):
+        with st.spinner(
+            "Running extraction with your edited descriptions… "
+            "this may take 20–60 seconds."
+        ):
+            overrides_payload = json.dumps(edited_entities)
+            files = {
+                "file": (
+                    _ft_state("test_file_name"),
+                    _ft_state("test_file_bytes"),
+                    _ft_state("test_file_type") or "application/octet-stream",
+                )
+            }
+            data = {
+                "entity_overrides":     overrides_payload,
+                "confidence_threshold": str(ft_confidence),
+            }
+            result = _ft_api_post_files(
+                f"/configs/{_ft_state('config_name')}"
+                f"/sections/{_ft_state('section_name')}/preview",
+                files=files,
+                data=data,
+            )
+
+        if result:
+            _ft_set("preview_result", result)
+            _ft_set("confirm_ready",  False)
             st.rerun()
+
+    if not can_preview:
+        st.caption("⬆️ Upload a test document to enable the preview.")
+
+    # ── STEP 4b: Show preview results ─────────────────────────────────────────
+    if _ft_state("preview_result"):
+        result = _ft_state("preview_result")
+        st.divider()
+        st.markdown(
+            f"### Step 4 — Preview Results "
+            f''
+            f'({result.get("processing_time_s",0):.1f}s)',
+            unsafe_allow_html=True,
+        )
+
+        gt_index: dict[str, dict] = {}
+        if _ft_state("gt_data"):
+            gt_index = _ft_load_gt_index(_ft_state("gt_data"))
+            st.markdown(
+                f''
+                f'GT loaded — {len(gt_index)} entities',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("No ground truth uploaded — comparison column will show '—'")
+
+        _ft_render_preview_vs_gt(
+            preview_entities  = result.get("entities", []),
+            gt_index          = gt_index,
+            original_entities = _ft_state("entities_original"),
+            edited_entities   = edited_entities,
+        )
+
+        # Per-entity description diff expander
+        with st.expander(
+            "🔍 View Description Changes vs Original", expanded=False
+        ):
+            orig_map = {
+                e["entity_name"]: e
+                for e in _ft_state("entities_original")
+            }
+            any_diff = False
+            for ent in edited_entities:
+                name       = ent["entity_name"]
+                orig_desc  = orig_map.get(name, {}).get("entity_description", "")
+                orig_ex    = orig_map.get(name, {}).get("entity_example_value", "")
+                new_desc   = ent["entity_description"]
+                new_ex     = ent["entity_example_value"]
+
+                desc_changed = orig_desc.strip() != new_desc.strip()
+                ex_changed   = orig_ex.strip()   != new_ex.strip()
+
+                if desc_changed or ex_changed:
+                    any_diff = True
+                    st.markdown(f"**`{name}`**")
+                    if desc_changed:
+                        dcol1, dcol2 = st.columns(2)
+                        with dcol1:
+                            st.markdown(
+                                'ORIGINAL DESCRIPTION',
+                                unsafe_allow_html=True,
+                            )
+                            st.code(orig_desc, language=None)
+                        with dcol2:
+                            st.markdown(
+                                'NEW DESCRIPTION',
+                                unsafe_allow_html=True,
+                            )
+                            st.code(new_desc, language=None)
+                    if ex_changed:
+                        ecol1, ecol2 = st.columns(2)
+                        with ecol1:
+                            st.markdown(
+                                'ORIGINAL EXAMPLE',
+                                unsafe_allow_html=True,
+                            )
+                            st.code(orig_ex, language=None)
+                        with ecol2:
+                            st.markdown(
+                                'NEW EXAMPLE',
+                                unsafe_allow_html=True,
+                            )
+                            st.code(new_ex, language=None)
+                    st.markdown("---")
+
+            if not any_diff:
+                st.info("No description changes have been made yet.")
+
+        _ft_set("confirm_ready", True)
+
+    # ── STEP 5: Confirm & save ─────────────────────────────────────────────────
+    if _ft_state("confirm_ready") and n_changed > 0:
+        st.divider()
+        st.markdown("### Step 5 — Save to Config File")
+
+        # Final review table
+        st.markdown(
+            f"The following **{n_changed}** entity description(s) will be "
+            f"written to **`{_ft_state('config_name')}.yaml`**:"
+        )
+
+        orig_map = {
+            e["entity_name"]: e
+            for e in _ft_state("entities_original")
+        }
+        save_rows = []
+        for ent in edited_entities:
+            name      = ent["entity_name"]
+            orig_desc = orig_map.get(name, {}).get("entity_description", "")
+            orig_ex   = orig_map.get(name, {}).get("entity_example_value", "")
+            if (orig_desc.strip() != ent["entity_description"].strip()
+                    or orig_ex.strip() != ent["entity_example_value"].strip()):
+                save_rows.append({
+                    "Entity":           name,
+                    "Field":            (
+                        "description + example"
+                        if orig_desc.strip() != ent["entity_description"].strip()
+                        and orig_ex.strip()  != ent["entity_example_value"].strip()
+                        else "description" if orig_desc.strip() != ent["entity_description"].strip()
+                        else "example_value"
+                    ),
+                    "Original":         orig_desc[:60] + "…" if len(orig_desc) > 60 else orig_desc,
+                    "New":              ent["entity_description"][:60] + "…"
+                                        if len(ent["entity_description"]) > 60
+                                        else ent["entity_description"],
+                })
+
+        st.dataframe(
+            pd.DataFrame(save_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.warning(
+            "⚠️ This will **overwrite** the YAML config file on disk. "
+            "A timestamped backup will be created automatically before saving.",
+            icon="⚠️",
+        )
+
+        confirm_col1, confirm_col2 = st.columns([1, 3])
+        with confirm_col1:
+            confirmed = st.checkbox(
+                "I've reviewed the changes above",
+                key="ft_confirm_checkbox",
+            )
+        with confirm_col2:
+            if st.button(
+                "💾 Save Descriptions to Config",
+                type="primary",
+                disabled=not confirmed,
+                use_container_width=True,
+                key="ft_save_btn",
+            ):
+                updates_payload = [
+                    {
+                        "entity_name":         e["entity_name"],
+                        "entity_description":  e["entity_description"],
+                        "entity_example_value": e["entity_example_value"],
+                    }
+                    for e in edited_entities
+                ]
+                save_result = _ft_api_patch(
+                    f"/configs/{_ft_state('config_name')}"
+                    f"/sections/{_ft_state('section_name')}/entities",
+                    payload={"updates": updates_payload},
+                )
+                if save_result:
+                    st.success(save_result.get("message", "Saved successfully."))
+                    st.info(
+                        f"Backup: `{Path(save_result.get('backup_path','')).name}`"
+                    )
+                    # Refresh: reload entities from disk and clear preview
+                    ents_data = _ft_api_get(
+                        f"/configs/{_ft_state('config_name')}"
+                        f"/sections/{_ft_state('section_name')}/entities"
+                    )
+                    if ents_data:
+                        entities = ents_data.get("entities", [])
+                        _ft_set("entities_original", entities)
+                        _ft_set("entities_edited",   entities)
+                    _ft_set("preview_result", None)
+                    _ft_set("confirm_ready",  False)
+                    st.rerun()
+
+    elif _ft_state("confirm_ready") and n_changed == 0:
+        st.divider()
+        st.info(
+            "No description changes detected. "
+            "Edit one or more entity descriptions above, "
+            "then re-run the preview to proceed."
+        )
+# ══════════════════════════════════════════════════════════════════════════════
+# Main app
+# ══════════════════════════════════════════════════════════════════════════════
+def main() -> None:
+    st.title("📄 CMSVS — Document Validation System")
+    st.caption(
+        "Configurable Multimodal Semantic Validation | Powered by NVIDIA NIM"
+    )
+
+    settings = render_sidebar()
+
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "🔍 Extract Entities",
+        "⚖️ Validate Pair",
+        "🛠️ Config Builder",
+        "🔧 Fine-Tune Entities",   # ← NEW
+        "📊 Manual Validation",
+        "🔌 API Explorer",
+    ])
+
+    with tab1:
+        render_extraction_tab(settings)
+    with tab2:
+        render_validation_tab(settings)
+    with tab3:
+        render_config_builder_tab()
+    with tab4:
+        render_finetune_tab()          # ← NEW
+    with tab5:
+        render_manual_validation_tab()
+    with tab6:
+        render_api_tab()
+
+
+if __name__ == "__main__":
+    main()

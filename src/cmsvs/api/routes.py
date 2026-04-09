@@ -24,6 +24,7 @@ from api.models import (
     MarkdownDetailResponse,
     MarkdownListResponse,
     ValidationResponse,
+    SectionListResponse, EntityListResponse, EntitiesPatchRequest, PreviewResponse, PatchResponse
 )
 from api.services import CMSVSService
 from api.config_generator import (
@@ -323,3 +324,57 @@ async def validate_documents_groundtruth(
     finally:
         Path(path_a).unlink(missing_ok=True)
         Path(path_b).unlink(missing_ok=True)
+
+# [endpoints for the Fine-Tune UI integration]
+@router.get("/configs/{config_name}/sections", response_model=SectionListResponse, tags=["Config Builder"])
+async def get_config_sections(config_name: str) -> SectionListResponse:
+    try:
+        cfg = get_service().get_config_detail(config_name)
+        return SectionListResponse(sections=[s.section_name for s in cfg.sections])
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    
+@router.get("/configs/{config_name}/sections/{section_name}/entities", response_model=EntityListResponse, tags=["Config Builder"])
+async def get_config_entities(config_name: str, section_name: str) -> EntityListResponse:
+    try:
+        cfg = get_service().get_config_detail(config_name)
+        for s in cfg.sections:
+            if s.section_name == section_name:
+                return EntityListResponse(entities=s.entities)
+        raise HTTPException(status_code=404, detail="Section not found")
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+@router.post("/configs/{config_name}/sections/{section_name}/preview", response_model=PreviewResponse, tags=["Config Builder"])
+async def preview_section_extraction(
+    config_name: str, section_name: str, file: UploadFile = File(...),
+    entity_overrides: str = Form(...), confidence_threshold: float = Form(0.75)
+):
+    svc = get_service()
+    if not svc.nvidia_key_set:
+        raise HTTPException(status_code=503, detail="NVIDIA_API_KEY not set.")
+    
+    import json
+    try:
+        overrides = json.loads(entity_overrides)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid entity_overrides JSON")
+        
+    suffix = Path(file.filename or "doc.png").suffix.lower()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+
+    try:
+        return svc.preview_extraction(tmp_path, config_name, section_name, overrides, confidence_threshold)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+@router.patch("/configs/{config_name}/sections/{section_name}/entities", response_model=PatchResponse, tags=["Config Builder"])
+async def patch_config_entities(config_name: str, section_name: str, payload: EntitiesPatchRequest):
+    try:
+        return get_service().patch_entities(config_name, section_name, payload.updates)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))

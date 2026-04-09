@@ -161,28 +161,10 @@ class NvidiaLLMClient:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.max_retries = max_retries
+        self.input_tokens = 0
+        self.output_tokens = 0
 
-    def complete(
-        self,
-        prompt: str,
-        images_b64: list[str] | None = None,
-    ) -> str:
-        """
-        Send a prompt (optionally with page images) to the NVIDIA LLM.
-
-        Parameters
-        ----------
-        prompt      : text prompt (system + user instructions)
-        images_b64  : list of base64-encoded PNG page images to attach
-
-        Returns
-        -------
-        str : raw LLM response content
-
-        Raises
-        ------
-        RuntimeError : if all retry attempts fail
-        """
+    def complete(self, prompt: str, images_b64: list[str] | None = None) -> str:
         messages = self._build_messages(prompt, images_b64 or [])
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -201,27 +183,23 @@ class NvidiaLLMClient:
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
-                response = requests.post(
-                    self.base_url,
-                    headers=headers,
-                    json=payload,
-                    timeout=120,
-                )
+                response = requests.post(self.base_url, headers=headers, json=payload, timeout=120)
                 if response.status_code != 200:
-                    raise RuntimeError(
-                        f"NVIDIA API HTTP {response.status_code}: "
-                        f"{response.text[:300]}"
-                    )
-                return response.json()["choices"][0]["message"]["content"]
+                    raise RuntimeError(f"NVIDIA API HTTP {response.status_code}: {response.text[:300]}")
+                
+                resp_json = response.json()
+                usage = resp_json.get("usage", {})
+                self.input_tokens += usage.get("prompt_tokens", 0)
+                self.output_tokens += usage.get("completion_tokens", 0)
+                
+                return resp_json["choices"][0]["message"]["content"]
             except Exception as exc:
                 last_error = exc
                 if attempt < self.max_retries:
-                    time.sleep(2 ** attempt)   # exponential back-off
+                    time.sleep(2 ** attempt)
 
-        raise RuntimeError(
-            f"NVIDIA LLM failed after {self.max_retries} attempts: {last_error}"
-        )
-
+        raise RuntimeError(f"NVIDIA LLM failed after {self.max_retries} attempts: {last_error}")
+    
     def complete_json(
         self,
         prompt: str,

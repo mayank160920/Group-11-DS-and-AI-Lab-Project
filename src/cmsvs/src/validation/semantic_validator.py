@@ -111,25 +111,9 @@ class SemanticValidator:
         doc_a_name: str = "Document A",
         doc_b_name: str = "Document B",
     ) -> SectionValidationResult:
-        """
-        Validate all entity pairs in one section.
-
-        Parameters
-        ----------
-        section        : SectionConfig with entity definitions
-        doc_a_entities : all extracted entities for Document A
-        doc_b_entities : all extracted entities for Document B
-        doc_a_name     : label for Document A
-        doc_b_name     : label for Document B
-
-        Returns
-        -------
-        SectionValidationResult
-        """
         entity_results: list[EntityValidationResult] = []
-        deferred_pairs: list[dict] = []   # pairs not resolved by fast path
+        deferred_pairs: list[dict] = []
 
-        # ── Step 1: Rule-based pre-normalisation fast path ────────────────────
         for entity_cfg in section.entities:
             name = entity_cfg.entity_name
             fev_a = doc_a_entities.get(name)
@@ -142,46 +126,19 @@ class SemanticValidator:
             norm_a = self.normalizer.normalize(val_a, data_type)
             norm_b = self.normalizer.normalize(val_b, data_type)
 
-            # Handle INELIGIBLE: one or both values missing
             if val_a is None or val_b is None:
                 entity_results.append(EntityValidationResult(
-                    entity_name=name,
-                    section_name=section.section_name,
-                    doc_a_value=val_a,
-                    doc_b_value=val_b,
-                    doc_a_normalized=norm_a,
-                    doc_b_normalized=norm_b,
-                    validation_status=ValidationStatus.INELIGIBLE,
-                    discrepancy_type=DiscrepancyType.NOT_APPLICABLE,
-                    reasoning="One or both values are missing (null).",
-                    confidence=1.0,
-                    review_required=True,
-                    fast_path_match=False,
+                    entity_name=name, section_name=section.section_name,
+                    doc_a_value=val_a, doc_b_value=val_b, doc_a_normalized=norm_a, doc_b_normalized=norm_b,
+                    validation_status=ValidationStatus.INELIGIBLE, discrepancy_type=DiscrepancyType.NOT_APPLICABLE,
+                    reasoning="One or both values are missing (null).", confidence=1.0,
+                    review_required=True, fast_path_match=False,
                 ))
                 continue
 
-            # Fast-path MATCH: identical after normalisation
-            if self.normalizer.is_fast_path_match(val_a, val_b, data_type):
-                entity_results.append(EntityValidationResult(
-                    entity_name=name,
-                    section_name=section.section_name,
-                    doc_a_value=val_a,
-                    doc_b_value=val_b,
-                    doc_a_normalized=norm_a,
-                    doc_b_normalized=norm_b,
-                    validation_status=ValidationStatus.MATCH,
-                    discrepancy_type=DiscrepancyType.NOT_APPLICABLE,
-                    reasoning=(
-                        "Values are identical after rule-based normalisation "
-                        "(fast-path match — no LLM call required)."
-                    ),
-                    confidence=1.0,
-                    review_required=False,
-                    fast_path_match=True,
-                ))
-                continue
+            # REMOVED: Fast-path match is removed to route all comparisions directly to the LLM-based CoT logic
 
-            # Defer to MLLM CoT validation
+            # Defer ALL to MLLM CoT validation strictly
             deferred_pairs.append({
                 "entity_name":     name,
                 "description":     entity_cfg.entity_description,
@@ -192,13 +149,10 @@ class SemanticValidator:
                 "doc_b_normalized": norm_b,
             })
 
-        # ── Step 2: Section-level CoT MLLM validation for deferred pairs ──────
         if deferred_pairs:
             mllm_results = self._validate_with_llm(
-                section=section,
-                entity_pairs=deferred_pairs,
-                doc_a_name=doc_a_name,
-                doc_b_name=doc_b_name,
+                section=section, entity_pairs=deferred_pairs,
+                doc_a_name=doc_a_name, doc_b_name=doc_b_name,
             )
             entity_results.extend(mllm_results)
 
