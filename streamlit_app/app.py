@@ -113,6 +113,17 @@ def api_post_files(
         return None
 
 
+@st.cache_data(ttl=5, show_spinner=False)
+def _cached_api_get(path: str) -> dict | None:
+    """Fast GET helper for high-rerun UI paths (e.g. sidebar)."""
+    try:
+        r = requests.get(f"{API_BASE}{path}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Sidebar
 # ══════════════════════════════════════════════════════════════════════════════
@@ -123,7 +134,7 @@ def render_sidebar() -> dict:
         st.title("⚙️ Settings")
 
         # API health check
-        health = api_get("/health")
+        health = _cached_api_get("/health")
         if health:
             if health.get("nvidia_key_set"):
                 st.success("🟢 API Online | NVIDIA Key: Set")
@@ -136,7 +147,7 @@ def render_sidebar() -> dict:
 
         # Config selection
         configs = []
-        config_data = api_get("/configs")
+        config_data = _cached_api_get("/configs")
         if config_data:
             configs = config_data.get("configs", [])
 
@@ -160,7 +171,7 @@ def render_sidebar() -> dict:
         # Show config details
         if selected_config:
             with st.expander("📋 Config Details", expanded=False):
-                detail = api_get(f"/configs/{selected_config}")
+                detail = _cached_api_get(f"/configs/{selected_config}")
                 if detail:
                     st.markdown(f"**Domain:** {detail.get('domain', '')}")
                     st.markdown(
@@ -682,6 +693,90 @@ def _empty_field_row() -> dict:
     }
 
 
+def _safe_text(value: Any) -> str:
+    """Coerce optional editor values to a stripped string."""
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    return str(value).strip()
+
+
+def _normalize_config_key(name: Any) -> str:
+    """Normalize config names for duplicate checks (mirrors snake_case intent)."""
+    return "_".join(_safe_text(name).lower().split())
+
+
+def _sync_cb_fields_from_editor() -> None:
+    """Sync manual form rows from data_editor widget state into session state."""
+    editor_value = st.session_state.get("cb_data_editor")
+    if editor_value is None:
+        return
+
+    expected_cols = [
+        "field_name",
+        "field_description",
+        "section",
+        "data_type",
+        "example_value",
+        "extraction_logic",
+        "expression_template",
+    ]
+
+    if isinstance(editor_value, dict) and any(
+        k in editor_value for k in ("edited_rows", "added_rows", "deleted_rows")
+    ):
+        base_df = st.session_state.get("cb_fields_df")
+        if not isinstance(base_df, pd.DataFrame) or base_df.empty:
+            base_df = pd.DataFrame([_empty_field_row()])
+        else:
+            base_df = base_df.copy()
+
+        deleted_rows = editor_value.get("deleted_rows", []) or []
+        if deleted_rows:
+            valid_idx = [i for i in deleted_rows if 0 <= int(i) < len(base_df)]
+            if valid_idx:
+                base_df = base_df.drop(index=valid_idx)
+
+        edited_rows = editor_value.get("edited_rows", {}) or {}
+        for idx, changed_cols in edited_rows.items():
+            row_idx = int(idx)
+            if row_idx < 0 or row_idx >= len(base_df):
+                continue
+            for col, value in (changed_cols or {}).items():
+                if col in expected_cols:
+                    base_df.at[row_idx, col] = value
+
+        added_rows = editor_value.get("added_rows", []) or []
+        if added_rows:
+            defaults = _empty_field_row()
+            normalized_new_rows = []
+            for row in added_rows:
+                merged = defaults.copy()
+                if isinstance(row, dict):
+                    merged.update(row)
+                normalized_new_rows.append(merged)
+            base_df = pd.concat(
+                [base_df, pd.DataFrame(normalized_new_rows)],
+                ignore_index=True,
+            )
+
+        df = base_df.reset_index(drop=True)
+    elif isinstance(editor_value, pd.DataFrame):
+        df = editor_value.copy()
+    else:
+        df = pd.DataFrame(editor_value)
+
+    for col, default in _empty_field_row().items():
+        if col not in df.columns:
+            df[col] = default
+
+    st.session_state.cb_fields_df = df[expected_cols].copy()
+
+
 def render_config_builder_tab() -> None:
     """Render the Config Builder tab for creating extraction configs."""
     st.header("🛠️ Config Builder")
@@ -716,6 +811,35 @@ def render_config_builder_tab() -> None:
                 key="cb_domain",
             )
 
+        existing_config_keys: set[str] = set()
+        configs_data = _cached_api_get("/configs")
+        if configs_data:
+            for cfg_name in configs_data.get("configs", []):
+                key = _normalize_config_key(cfg_name)
+                if key:
+                    existing_config_keys.add(key)
+
+        markdown_data = _cached_api_get("/configs/markdowns")
+        if markdown_data:
+            for md_name in markdown_data.get("markdowns", []):
+                md_base = _safe_text(md_name)
+                if md_base.endswith(".md"):
+                    md_base = md_base[:-3]
+                key = _normalize_config_key(md_base)
+                if key:
+                    existing_config_keys.add(key)
+
+        entered_config_key = _normalize_config_key(config_name_input)
+        config_name_exists = bool(
+            entered_config_key and entered_config_key in existing_config_keys
+        )
+
+        if config_name_exists:
+            st.error(
+                "This config name already exists. Please choose a different name "
+                "to avoid overwriting saved files."
+            )
+
         st.divider()
 
         # ── Input method selector ──────────────────────────────────────────
@@ -727,6 +851,7 @@ def render_config_builder_tab() -> None:
         )
 
         fields_data: list[dict] = []
+        all_rows: list[dict] = []
 
         if input_method == "📤 CSV Upload":
             st.info(
@@ -764,6 +889,7 @@ def render_config_builder_tab() -> None:
                         st.success(f"Loaded {len(df_csv)} fields from CSV")
                         st.dataframe(df_csv, use_container_width=True, hide_index=True)
                         fields_data = df_csv.to_dict("records")
+                        all_rows = fields_data
                 except Exception as exc:
                     st.error(f"Failed to parse CSV: {exc}")
 
@@ -785,11 +911,30 @@ def render_config_builder_tab() -> None:
 
         else:
             # ── Manual form using st.data_editor ───────────────────────────
-            if "cb_fields" not in st.session_state:
-                st.session_state.cb_fields = [_empty_field_row()]
+            if "cb_fields_df" not in st.session_state:
+                if "cb_fields" in st.session_state:
+                    st.session_state.cb_fields_df = pd.DataFrame(
+                        st.session_state.cb_fields
+                    )
+                else:
+                    st.session_state.cb_fields_df = pd.DataFrame([_empty_field_row()])
+
+            expected_cols = [
+                "field_name",
+                "field_description",
+                "section",
+                "data_type",
+                "example_value",
+                "extraction_logic",
+                "expression_template",
+            ]
+            for col, default in _empty_field_row().items():
+                if col not in st.session_state.cb_fields_df.columns:
+                    st.session_state.cb_fields_df[col] = default
+            st.session_state.cb_fields_df = st.session_state.cb_fields_df[expected_cols]
 
             edited_df = st.data_editor(
-                pd.DataFrame(st.session_state.cb_fields),
+                st.session_state.cb_fields_df,
                 num_rows="dynamic",
                 use_container_width=True,
                 column_config={
@@ -820,20 +965,62 @@ def render_config_builder_tab() -> None:
                     ),
                 },
                 key="cb_data_editor",
+                on_change=_sync_cb_fields_from_editor,
             )
 
-            # Sync edits back
-            st.session_state.cb_fields = edited_df.to_dict("records")
+            # Keep a DataFrame in session state to avoid coercion/reset jitter.
+            if "cb_fields_df" not in st.session_state:
+                st.session_state.cb_fields_df = edited_df.copy()
+            all_rows = st.session_state.cb_fields_df.to_dict("records")
             # Filter out empty rows
             fields_data = [
-                r for r in edited_df.to_dict("records")
-                if r.get("field_name", "").strip()
+                r for r in all_rows
+                if _safe_text(r.get("field_name"))
             ]
 
         st.divider()
 
+        missing_field_name_rows = [
+            i + 1
+            for i, row in enumerate(all_rows)
+            if not _safe_text(row.get("field_name"))
+        ]
+        has_missing_field_name = bool(missing_field_name_rows)
+        has_any_user_input = any(
+            _safe_text(row.get("field_name"))
+            or _safe_text(row.get("field_description"))
+            or _safe_text(row.get("example_value"))
+            or _safe_text(row.get("expression_template"))
+            or (_safe_text(row.get("section")) and _safe_text(row.get("section")) != "General")
+            or (_safe_text(row.get("data_type")) and _safe_text(row.get("data_type")) != "text")
+            or (
+                _safe_text(row.get("extraction_logic"))
+                and _safe_text(row.get("extraction_logic")) != "DIRECT"
+            )
+            for row in all_rows
+        )
+
+        if has_missing_field_name and has_any_user_input:
+            preview_rows = ", ".join(str(i) for i in missing_field_name_rows[:10])
+            more = (
+                f" (and {len(missing_field_name_rows) - 10} more)"
+                if len(missing_field_name_rows) > 10
+                else ""
+            )
+            st.warning(
+                "`field_name` is required for every row. "
+                f"Missing in row(s): {preview_rows}{more}. "
+                "Complete or remove those rows to enable generation."
+            )
+
         # ── Generate button ────────────────────────────────────────────────
-        can_generate = bool(config_name_input and config_name_input.strip() and fields_data)
+        can_generate = bool(
+            config_name_input
+            and config_name_input.strip()
+            and fields_data
+            and not has_missing_field_name
+            and not config_name_exists
+        )
 
         if st.button(
             "🚀 Generate Config & Markdown",
@@ -847,16 +1034,16 @@ def render_config_builder_tab() -> None:
                 "domain": domain_input.strip() or "general",
                 "fields": [
                     {
-                        "field_name": f.get("field_name", "").strip(),
-                        "field_description": f.get("field_description", ""),
-                        "section": f.get("section", "General"),
-                        "data_type": f.get("data_type", "text"),
-                        "example_value": str(f.get("example_value", "")),
-                        "extraction_logic": f.get("extraction_logic", "DIRECT"),
-                        "expression_template": f.get("expression_template") or None,
+                        "field_name": _safe_text(f.get("field_name")),
+                        "field_description": _safe_text(f.get("field_description")),
+                        "section": _safe_text(f.get("section")) or "General",
+                        "data_type": _safe_text(f.get("data_type")) or "text",
+                        "example_value": _safe_text(f.get("example_value")),
+                        "extraction_logic": _safe_text(f.get("extraction_logic")) or "DIRECT",
+                        "expression_template": _safe_text(f.get("expression_template")) or None,
                     }
                     for f in fields_data
-                    if f.get("field_name", "").strip()
+                    if _safe_text(f.get("field_name"))
                 ],
             }
 
@@ -864,6 +1051,7 @@ def render_config_builder_tab() -> None:
                 result = api_post_json("/configs/create", payload)
 
             if result:
+                _cached_api_get.clear()
                 st.success(
                     f"✅ Config **{result['config_name']}** created! "
                     f"({result['total_sections']} sections, {result['total_fields']} fields)"
@@ -913,6 +1101,9 @@ def render_config_builder_tab() -> None:
                 key="cb_manage_select",
             )
 
+            if "cb_delete_target" not in st.session_state:
+                st.session_state.cb_delete_target = None
+
             if selected_md:
                 col_actions = st.columns([1, 1, 2])
 
@@ -923,6 +1114,10 @@ def render_config_builder_tab() -> None:
                         "🗑️ Delete", key="cb_delete_btn",
                         type="secondary", use_container_width=True,
                     )
+
+                if delete_btn:
+                    st.session_state.cb_delete_target = selected_md
+                    st.session_state[f"cb_delete_confirm_{selected_md}"] = False
 
                 if view_btn:
                     md_detail = api_get(f"/configs/{selected_md}/markdown")
@@ -945,15 +1140,18 @@ def render_config_builder_tab() -> None:
                             key="cb_manage_dl",
                         )
 
-                if delete_btn:
+                if st.session_state.get("cb_delete_target") == selected_md:
+                    confirm_key = f"cb_delete_confirm_{selected_md}"
                     confirm = st.checkbox(
                         f"Confirm deletion of **{selected_md}** (YAML + Markdown)",
-                        key="cb_delete_confirm",
+                        key=confirm_key,
                     )
                     if confirm:
                         del_result = api_delete(f"/configs/{selected_md}")
                         if del_result:
+                            _cached_api_get.clear()
                             st.success(del_result.get("message", "Deleted."))
+                            st.session_state.cb_delete_target = None
                             st.rerun()
 
 
