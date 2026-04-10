@@ -213,7 +213,7 @@ class PDFPipeline:
                         entity_type=EntityType.DIRECT,
                         confidence=er.confidence,
                         source_page=er.source_page,
-                        source_region=er.raw_context[:80],
+                        source_region=(er.raw_context or "")[:80],
                         raw_context=er.raw_context,
                         review_required=er.review_required,
                         fallback_triggered=er.fallback_triggered,
