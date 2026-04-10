@@ -29,9 +29,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent / ".env")
-
-print(Path(__file__).parent.parent / ".env")
+# load_dotenv(Path(__file__).parent.parent / "env")
+print(load_dotenv(Path(__file__).parent.parent / "env"))
+print(Path(__file__).parent.parent / "env")
 
 # ── Add src/ to Python path ───────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

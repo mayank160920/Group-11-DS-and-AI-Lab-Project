@@ -15,7 +15,7 @@ import io, os
 import json
 import time
 from typing import Any
-
+from pathlib import Path
 import pandas as pd
 import requests
 import streamlit as st
@@ -256,19 +256,12 @@ def _render_extraction_result(result: dict) -> None:
     )
 
     # Summary metrics
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Entities", result.get("total_entities", 0))
     col2.metric("Found", result.get("found_count", 0))
-    col3.metric(
-        "Not Found",
-        result.get("total_entities", 0) - result.get("found_count", 0),
-    )
-    col4.metric(
-        "Review Required",
-        result.get("review_count", 0),
-        delta=None,
-        delta_color="inverse",
-    )
+    col3.metric("Review Required", result.get("review_count", 0), delta=None, delta_color="inverse")
+    col4.metric("Tokens (In/Out)", f"{result.get('input_tokens', 0)} / {result.get('output_tokens', 0)}")
+    col5.metric("Cost", f"${result.get('total_cost', 0):.5f}")
 
     st.divider()
 
@@ -426,17 +419,18 @@ def _render_validation_result(result: dict) -> None:
     )
 
     # Summary metrics
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     total = summary.get("total_entities", 0)
     matches = summary.get("total_matches", 0)
     mismatches = summary.get("total_mismatches", 0)
     match_rate = summary.get("match_rate", 0.0)
 
-    col1.metric("Total Entities", total)
-    col2.metric("✅ Matches", matches)
-    col3.metric("❌ Mismatches", mismatches)
-    col4.metric("Match Rate", f"{match_rate:.0%}")
-    col5.metric("Review Required", summary.get("review_required", 0))
+    col1.metric("Total", total)
+    col2.metric("Matches", matches)
+    col3.metric("Mismatches", mismatches)
+    col4.metric("Review Req.", summary.get("review_required", 0))
+    col5.metric("Tokens (I/O)", f"{summary.get('input_tokens', 0)} / {summary.get('output_tokens', 0)}")
+    col6.metric("Cost", f"${summary.get('total_cost', 0):.5f}")
 
     # Match rate gauge
     st.progress(match_rate, text=f"Overall Match Rate: {match_rate:.1%}")

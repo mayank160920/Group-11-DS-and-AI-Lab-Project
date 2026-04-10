@@ -155,8 +155,9 @@ class CMSVSService:
         config = self._load_config(config_name)
         pipeline = self._build_pipeline(config, confidence_threshold)
         entity_values = pipeline._extract_document(file_path)
-
         elapsed = round(time.time() - t0, 2)
+
+
         found = sum(
             1 for fev in entity_values.values()
             if fev.extracted_value is not None
@@ -171,6 +172,10 @@ class CMSVSService:
             for name, fev in entity_values.items()
         }
 
+        inp_tokens = pipeline.llm_client.input_tokens
+        out_tokens = pipeline.llm_client.output_tokens
+        cost = (inp_tokens / 1_000_000) * 0.11 + (out_tokens / 1_000_000) * 0.34
+
         return ExtractionResponse(
             job_id=job_id,
             document_path=Path(file_path).name,
@@ -179,6 +184,9 @@ class CMSVSService:
             found_count=found,
             review_count=review,
             processing_time_s=elapsed,
+            input_tokens=inp_tokens,
+            output_tokens=out_tokens,
+            total_cost=cost,
             entities=entities,
         )
 
@@ -267,6 +275,10 @@ class CMSVSService:
             for r in s.entity_results
             if r.fast_path_match
         )
+        inp_tokens = pipeline.llm_client.input_tokens
+        out_tokens = pipeline.llm_client.output_tokens
+        cost = (inp_tokens / 1_000_000) * 0.11 + (out_tokens / 1_000_000) * 0.34
+
 
         return ValidationResponse(
             job_id=job_id,
@@ -283,6 +295,9 @@ class CMSVSService:
                 review_required=review_count,
                 fast_path_matches=fast_path,
                 sections_processed=len(validation_report.section_results),
+                input_tokens=inp_tokens,
+                output_tokens=out_tokens,
+                total_cost=cost
             ),
             sections=sections_out,
             doc_a_entities={
@@ -399,3 +414,109 @@ class CMSVSService:
             llm_client=llm_client,
             confidence_threshold=confidence_threshold,
         )
+    
+    def preview_extraction(self, file_path: str, config_name: str, section_name: str, overrides: list[dict], confidence_threshold: float):
+        import sys
+        import time
+        if str(SRC_DIR) not in sys.path:
+            sys.path.insert(0, str(SRC_DIR))
+            
+        from ingestion.document_processor import DocumentProcessor
+        from input.input_handler import InputHandler
+        from shared_types import EntityType, FinalEntityValue
+        from extraction.mllm_extractor import MLLMExtractor
+        from extraction.expression_orchestrator import ExpressionOrchestrator
+        
+        self._check_api_key()
+        config = self._load_config(config_name)
+        target_section = next((sec for sec in config.sections if sec.section_name == section_name), None)
+                
+        if not target_section:
+            raise ValueError(f"Section '{section_name}' not found in config '{config_name}'.")
+            
+        # 1. Apply temporary description overrides for the preview
+        override_map = {o["entity_name"]: o for o in overrides}
+        for ent in target_section.entities:
+            if ent.entity_name in override_map:
+                o = override_map[ent.entity_name]
+                ent.entity_description = o.get("entity_description", ent.entity_description)
+                ent.entity_example_value = o.get("entity_example_value", ent.entity_example_value)
+
+        # 2. Get the LLM client and instantiate extractors directly
+        pipeline = self._build_pipeline(config, confidence_threshold)
+        llm_client = pipeline.llm_client
+        
+        extractor = MLLMExtractor(llm_client=llm_client, confidence_threshold=confidence_threshold)
+        orchestrator = ExpressionOrchestrator(mllm_extractor=extractor, confidence_threshold=confidence_threshold)
+
+        # 3. Load Document (taking up to the first 4 pages for quick preview)
+        loaded = DocumentProcessor(InputHandler()).process(file_path)
+        images_b64 = [pi.image_base64 for pi in loaded.page_images.values()][:4] 
+        
+        t0 = time.time()
+        
+        # 4. Extract Entities
+        raw_extractions = extractor.extract_section(section=target_section, page_images_b64=images_b64)
+        entity_results = extractor.to_entity_results(raw_extractions)
+        
+        # 5. Process Expressions
+        expression_values = orchestrator.process_all_expression_entities(section=target_section, page_images_b64=images_b64)
+        
+        # 6. Merge Results
+        all_values = {}
+        for name, er in entity_results.items():
+            if name not in expression_values:
+                all_values[name] = FinalEntityValue(
+                    entity_name=er.entity_name, 
+                    extracted_value=er.extracted_value,
+                    extraction_status=er.extraction_status, 
+                    entity_type=EntityType.DIRECT,
+                    confidence=er.confidence, 
+                    source_page=er.source_page,
+                    source_region=(er.raw_context or "")[:80], 
+                    raw_context=er.raw_context,
+                    review_required=er.review_required, 
+                    fallback_triggered=er.fallback_triggered,
+                    expression_audit=None,
+                )
+        all_values.update(expression_values)
+        
+        elapsed = time.time() - t0
+        
+        # Convert FinalEntityValue -> ExtractedEntity Pydantic Model
+        entities_out = [_fev_to_model(fev) for fev in all_values.values()]
+        
+        return {
+            "processing_time_s": elapsed, 
+            "entities": entities_out
+        }
+    def patch_entities(self, config_name: str, section_name: str, updates: list):
+        import yaml
+        from datetime import datetime
+        import shutil
+        
+        config_path = CONFIGS_DIR / f"{config_name}.yaml"
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config '{config_name}' not found.")
+            
+        with open(config_path, "r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh)
+            
+        override_map = {u.entity_name: u for u in updates}
+        for sec in raw.get("sections", []):
+            if sec.get("section_name") == section_name:
+                for ent in sec.get("entities", []):
+                    if ent.get("entity_name") in override_map:
+                        o = override_map[ent.get("entity_name")]
+                        ent["entity_description"] = o.entity_description
+                        ent["entity_example_value"] = o.entity_example_value
+                        
+        backup_name = f"{config_name}_{int(datetime.now().timestamp())}.yaml.bak"
+        backup_path = CONFIGS_DIR / backup_name
+        shutil.copy(config_path, backup_path)
+        
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(raw, fh, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            
+        self._config_cache.pop(config_name, None)
+        return {"message": "Config updated successfully.", "backup_path": str(backup_path)}
