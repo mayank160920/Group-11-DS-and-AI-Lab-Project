@@ -117,6 +117,62 @@ python3 -m streamlit run streamlit_app/app.py
 4. Upload a PDF or image document for extraction, or upload a document pair for validation.
 5. Review extracted entities, validation results, and any items flagged for human review.
 
+## Hugging Face Space Setup
+
+Do not deploy the `main` branch directly to Hugging Face Spaces. In this repository, `main` includes the top-level `datasets/` folder and other large files, which caused deployment issues on Hugging Face.
+
+Instead, use the separate deployment branch `deploy/hf`:
+
+- `deploy/hf` is an orphan-style deployment branch used only for Hugging Face Spaces
+- It moves the contents of `code/` to the repository root on that branch
+- It adds a `Dockerfile` and `scripts/start_space.sh` for the Space runtime
+- It avoids shipping the large dataset folders that exist on `main`
+
+### Branch Layout
+
+On `deploy/hf`, the Space expects the application files at the repository root, for example:
+
+- `Dockerfile`
+- `README.md` with Hugging Face Space metadata
+- `streamlit_app/`
+- `api/`
+- `src/`
+- `requirements.txt`
+
+### Deployment Flow
+
+From the repository root:
+
+```bash
+git fetch origin
+git switch --track deploy/hf origin/deploy/hf
+```
+
+Make Hugging Face updates on `deploy/hf`, not on `main`. When application code changes under `code/` on `main`, mirror the relevant changes into the root of `deploy/hf` before pushing that branch to the Space.
+
+### Hugging Face Space Configuration
+
+The deployment branch is configured for a Docker Space:
+
+- SDK: `docker`
+- App port: `7860`
+- Startup script: `scripts/start_space.sh`
+
+At runtime, the container starts:
+
+- the FastAPI backend on port `8000`
+- the Streamlit frontend on port `7860`
+
+### Required Secrets
+
+Add this secret in your Hugging Face Space settings before launching the app:
+
+```bash
+NVIDIA_API_KEY=nvapi....
+```
+
+Without that secret, backend extraction requests will fail because the API server reads `NVIDIA_API_KEY` from the environment.
+
 ## Troubleshooting
 
 - `NVIDIA_API_KEY is not configured on the server`
