@@ -1,5 +1,5 @@
 ---
-title: Ml4
+title: G11-DSAI-Lab
 emoji: 📚
 colorFrom: pink
 colorTo: blue
