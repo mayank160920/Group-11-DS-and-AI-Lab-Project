@@ -117,6 +117,10 @@ python3 -m streamlit run streamlit_app/app.py
 4. Upload a PDF or image document for extraction, or upload a document pair for validation.
 5. Review extracted entities, validation results, and any items flagged for human review.
 
+If you want sample documents to try in the app, use the shared Google Drive folder:
+
+- [Sample documents for app testing](https://drive.google.com/drive/folders/15N9uKyTZdmDUNvmV1ikGyg-WDKV4bkPV?usp=drive_link)
+
 ## Hugging Face Space Setup
 
 Do not deploy the `main` branch directly to Hugging Face Spaces. In this repository, `main` includes the top-level `datasets/` folder and other large files, which caused deployment issues on Hugging Face.
