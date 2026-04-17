@@ -25,6 +25,10 @@ import streamlit as st
 # API_BASE = "http://localhost:8000"
 API_BASE = os.environ.get("CMSVS_API_URL", "http://localhost:8000").rstrip("/")
 PAGE_TITLE = "CMSVS — Document Validation System"
+SAMPLE_DOCS_URL = (
+    "https://drive.google.com/drive/folders/"
+    "15N9uKyTZdmDUNvmV1ikGyg-WDKV4bkPV?usp=drive_link"
+)
 
 st.set_page_config(
     page_title=PAGE_TITLE,
@@ -124,6 +128,14 @@ def _cached_api_get(path: str) -> dict | None:
         return None
 
 
+def render_sample_docs_notice() -> None:
+    """Show users where to find sample files for trying the app."""
+    st.info(
+        "Need example files to try the app? "
+        f"[Open the sample documents folder]({SAMPLE_DOCS_URL})."
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Sidebar
 # ══════════════════════════════════════════════════════════════════════════════
@@ -209,6 +221,7 @@ def render_extraction_tab(settings: dict) -> None:
     st.caption(
         "Upload a single document (PDF or image) to extract all configured entities."
     )
+    render_sample_docs_notice()
 
     uploaded = st.file_uploader(
         "Upload Document",
@@ -334,6 +347,7 @@ def render_validation_tab(settings: dict) -> None:
     st.caption(
         "Upload two documents to extract entities and run semantic validation."
     )
+    render_sample_docs_notice()
 
     col_a, col_b = st.columns(2)
 
