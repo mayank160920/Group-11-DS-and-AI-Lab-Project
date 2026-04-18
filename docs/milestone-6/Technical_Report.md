@@ -546,9 +546,9 @@ Pairs 001–004 (only synonym/OCR augmentations) achieved **perfect scores**. Pa
 | Member | Key Contributions |
 |---|---|
 | **Mallesh Mayara** (21f2001118) | Config architecture, shared type contracts, report generator, semantic validation engine, pipeline integration (PDF/Image/Master), Streamlit UI, end-to-end testing, all milestone documentation |
-| **Mayank Dode** (22f1000781) | Input routing, PDF rendering, OCR integration, FUNSD augmentation pipeline, batch pipeline runner for evaluation |
-| **Karthik Ganesh** (21f2000775) | Dense retrieval architecture (IndexBuilder, DenseRetriever), NVIDIA NIM client, provider evaluation, entity name mapper, evaluation metrics |
-| **Ayush Verma** (21f3000500) | NER prompt engineering, MLLM extractor, expression evaluator/orchestrator, SBC augmentation, GT JSON generation, ablation experiments |
+| **Mayank Dode** (22f1000781) | Input routing Logic, Integrated PaddleOCR for PDF Text extraction, FUNSD synthetic data augmentation, FUNSD evaluation metrics computation, Managed GitHub repository health,  Hugging Face Deployment, Debugged and resolved runtime errors. |
+| **Karthik Ganesh** (21f2000775) | Designed system architecture and schema, Dense retrieval architecture (IndexBuilder, DenseRetriever), NVIDIA NIM client, provider evaluation, entity name mapper, evaluation metrics |
+| **Ayush Verma** (21f3000500) | NER prompt engineering, MLLM extractor, expression evaluator/orchestrator, SBC augmentation, GT JSON generation, ablation experiments, Milestone presentations (M5, M6) |
 
 ---
 
