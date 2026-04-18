@@ -560,8 +560,3 @@ Pairs 001–004 (only synonym/OCR augmentations) achieved **perfect scores**. Pa
 4. NVIDIA NIM API documentation
 5. PaddlePaddle, "PaddleOCR: Awesome multilingual OCR toolkit"
 6. Wei et al., "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models," NeurIPS 2022
-
----
-
-*Document Version: 1.0 | Generated: April 2026*
-*Indian Institute of Technology Madras — Deep Learning / Generative AI Course Project*
