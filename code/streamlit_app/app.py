@@ -29,6 +29,7 @@ SAMPLE_DOCS_URL = (
     "https://drive.google.com/drive/folders/"
     "15N9uKyTZdmDUNvmV1ikGyg-WDKV4bkPV?usp=drive_link"
 )
+INR_CONVERSION_RATE = 93.79
 
 st.set_page_config(
     page_title=PAGE_TITLE,
@@ -36,6 +37,68 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+
+def _get_files_from_folder(folder_path: str) -> list[Path]:
+    """Helper to list files in a directory."""
+    p = Path(folder_path)
+    if not p.exists():
+        return []
+    return [f for f in p.iterdir() if f.is_file() and f.suffix.lower() in {".pdf", ".png", ".jpg", ".jpeg"}]
+
+def _show_file_preview(file_path: Path):
+    """Render a preview of the selected sample file."""
+    if file_path.suffix.lower() == ".pdf":
+        st.info("Preview: PDF files cannot be previewed as images directly in browser.")
+    else:
+        st.image(str(file_path), caption=file_path.name, use_container_width=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Helper to generate mock images so users can just "click to try"
+# ══════════════════════════════════════════════════════════════════════════════
+def _get_sample_image_bytes(variant: str = "A") -> bytes:
+    """Generate a synthetic sample document image in-memory."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (800, 600), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    if variant == "A":
+        lines = [
+            ("MARKETING RESEARCH AUTHORIZATION", (72, 40)),
+            ("Form No: 06", (72, 80)),
+            ("Date: 4/16/90", (72, 105)),
+            ("Stamp ID: 670801704", (72, 130)),
+            ("From: J. Smith", (72, 160)),
+            ("To: P.W. Putney", (72, 185)),
+            ("Project: Y-1 Ultra 100's vs. Winston Ultra 100's", (72, 210)),
+            ("Project No: 1990-48B", (72, 235)),
+            ("Organisation: Kapuler Marketing Research", (72, 260)),
+            ("Sample Size: 400", (72, 285)),
+            ("Total Cost: $12,500", (72, 310)),
+            ("CC: S. Willinger (3), K. A. Hutchison/S. A. Howard", (72, 335)),
+        ]
+    else:
+        lines = [
+            ("MARKETING RESEARCH AUTHORIZATION", (72, 40)),
+            ("Form No: 06", (72, 80)),
+            ("Date: April 16, 1990", (72, 105)),
+            ("Stamp ID: 670801704", (72, 130)),
+            ("From: J. Smith", (72, 160)),
+            ("To: P.W. Putney", (72, 185)),
+            ("Project: Y-1 Ultra 100s versus Winston Ultra 100s", (72, 210)),
+            ("Project No: 1990-48B", (72, 235)),
+            ("Organisation: Kapuler Mktg Research", (72, 260)),
+            ("Sample Size: 500", (72, 285)), # This one triggers a mismatch 
+            ("Total Cost: $12,500", (72, 310)),
+            ("CC: S. Willinger (3), K. A. Hutchison/S. A. Howard", (72, 335)),
+        ]
+
+    for text, pos in lines:
+        draw.text(pos, text, fill=(0, 0, 0))
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -216,18 +279,61 @@ def render_sidebar() -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def render_extraction_tab(settings: dict) -> None:
-    """Render the single-document extraction tab."""
+    """Render the single-document extraction tab with sample file support."""
     st.header("🔍 Extract Entities")
     st.caption(
-        "Upload a single document (PDF or image) to extract all configured entities."
+        "Upload a single document (PDF or image) or select a sample to extract all configured entities."
     )
     render_sample_docs_notice()
 
+    # ── Sample Selection Logic ────────────────────────────────────────────────
+    sample_files = _get_files_from_folder("document_a")
+    selected_sample = None
+    
+    if sample_files:
+        st.subheader("🧪 Use a Sample Document")
+        col1, col2 = st.columns([3, 1])
+        
+        sample_names = ["None"] + [f.name for f in sample_files]
+        selected_sample_name = col1.selectbox(
+            "Select Sample", 
+            options=sample_names, 
+            key="extraction_sample_select"
+        )
+        
+        if selected_sample_name != "None":
+            selected_sample = Path("document_a") / selected_sample_name
+            if col2.button("👁️ Preview File", use_container_width=True):
+                # Modal/Popup-like experience using an expander
+                with st.expander(f"Preview: {selected_sample_name}", expanded=True):
+                    _show_file_preview(selected_sample)
+
+    st.divider()
+
+    # ── File Uploader ─────────────────────────────────────────────────────────
     uploaded = st.file_uploader(
         "Upload Document",
         type=["pdf", "png", "jpg", "jpeg", "tiff", "bmp", "webp"],
         help="PDF files use the full RAG pipeline. Images use direct MLLM extraction.",
     )
+
+    # ── Processing Logic ──────────────────────────────────────────────────────
+    file_bytes = None
+    file_name = None
+    file_type = None
+
+    # Logic to prioritize the actual upload, but fallback to sample if selected
+    if uploaded:
+        file_bytes = uploaded.getvalue()
+        file_name = uploaded.name
+        file_type = uploaded.type
+    elif selected_sample and selected_sample.exists():
+        with open(selected_sample, "rb") as f:
+            file_bytes = f.read()
+            file_name = selected_sample.name
+            # Basic mime type inference
+            file_type = "application/pdf" if selected_sample.suffix == ".pdf" else "image/png"
+        st.info(f"ℹ️ Using Sample: `{selected_sample.name}`. Click 'Extract Entities' to proceed.")
 
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -240,7 +346,7 @@ def render_extraction_tab(settings: dict) -> None:
         extract_btn = st.button(
             "Extract Entities",
             type="primary",
-            disabled=not (uploaded and settings.get("config_name")),
+            disabled=not (file_bytes and settings.get("config_name")),
             use_container_width=True,
         )
 
@@ -248,9 +354,9 @@ def render_extraction_tab(settings: dict) -> None:
         st.info("Select a configuration in the sidebar to continue.")
         return
 
-    if extract_btn and uploaded:
+    if extract_btn and file_bytes:
         with st.spinner("Extracting entities… this may take 30-90 seconds"):
-            files = {"file": (uploaded.name, uploaded.getvalue(), uploaded.type)}
+            files = {"file": (file_name, file_bytes, file_type)}
             data = {
                 "config_name": settings["config_name"],
                 "confidence_threshold": settings["confidence"],
@@ -274,7 +380,9 @@ def _render_extraction_result(result: dict) -> None:
     col2.metric("Found", result.get("found_count", 0))
     col3.metric("Review Required", result.get("review_count", 0), delta=None, delta_color="inverse")
     col4.metric("Tokens (In/Out)", f"{result.get('input_tokens', 0)} / {result.get('output_tokens', 0)}")
-    col5.metric("Cost", f"${result.get('total_cost', 0):.5f}")
+    
+    cost_inr = result.get('total_cost', 0) * INR_CONVERSION_RATE
+    col5.metric("Cost", f"₹{cost_inr:.5f}")
 
     st.divider()
 
@@ -342,41 +450,61 @@ def _render_extraction_result(result: dict) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def render_validation_tab(settings: dict) -> None:
-    """Render the document pair validation tab."""
+    """Render the document pair validation tab with sample file support."""
     st.header("⚖️ Validate Document Pair")
-    st.caption(
-        "Upload two documents to extract entities and run semantic validation."
-    )
+    st.caption("Upload two documents to extract entities and run semantic validation, or select samples.")
     render_sample_docs_notice()
 
-    col_a, col_b = st.columns(2)
+    # ── Document A Section ────────────────────────────────────────────────────
+    with st.expander("📄 Select Document A (Sample or Upload)", expanded=True):
+        files_a = _get_files_from_folder("document_a")
+        sel_a = st.selectbox("Sample Doc A", ["None"] + [f.name for f in files_a], key="sel_a")
+        
+        if sel_a != "None" and st.button("👁️ Preview Doc A", key="prev_a"):
+            _show_file_preview(Path("document_a") / sel_a)
 
-    with col_a:
-        st.subheader("Document A")
         doc_a_file = st.file_uploader(
-            "Upload Document A",
+            "Or Upload Document A",
             type=["pdf", "png", "jpg", "jpeg", "tiff", "bmp", "webp"],
             key="doc_a_upload",
         )
-        doc_a_name = st.text_input(
-            "Label for Document A",
-            value="Document A (Source)",
-            key="doc_a_name",
-        )
+        
+        doc_a_name = st.text_input("Label for Document A", value="Document A (Source)", key="doc_a_name")
 
-    with col_b:
-        st.subheader("Document B")
+    # ── Document B Section ────────────────────────────────────────────────────
+    with st.expander("📄 Select Document B (Sample or Upload)", expanded=True):
+        files_b = _get_files_from_folder("document_b")
+        sel_b = st.selectbox("Sample Doc B", ["None"] + [f.name for f in files_b], key="sel_b")
+        
+        if sel_b != "None" and st.button("👁️ Preview Doc B", key="prev_b"):
+            _show_file_preview(Path("document_b") / sel_b)
+
         doc_b_file = st.file_uploader(
-            "Upload Document B",
+            "Or Upload Document B",
             type=["pdf", "png", "jpg", "jpeg", "tiff", "bmp", "webp"],
             key="doc_b_upload",
         )
-        doc_b_name = st.text_input(
-            "Label for Document B",
-            value="Document B (Comparison)",
-            key="doc_b_name",
-        )
+        
+        doc_b_name = st.text_input("Label for Document B", value="Document B (Comparison)", key="doc_b_name")
 
+    # ── Resolution Logic (Priority: Upload > Sample) ──────────────────────────
+    a_bytes, a_name, a_type = None, None, None
+    if doc_a_file:
+        a_bytes, a_name, a_type = doc_a_file.getvalue(), doc_a_file.name, doc_a_file.type
+    elif sel_a != "None":
+        path = Path("document_a") / sel_a
+        with open(path, "rb") as f:
+            a_bytes, a_name, a_type = f.read(), path.name, "application/pdf" if path.suffix == ".pdf" else "image/png"
+
+    b_bytes, b_name, b_type = None, None, None
+    if doc_b_file:
+        b_bytes, b_name, b_type = doc_b_file.getvalue(), doc_b_file.name, doc_b_file.type
+    elif sel_b != "None":
+        path = Path("document_b") / sel_b
+        with open(path, "rb") as f:
+            b_bytes, b_name, b_type = f.read(), path.name, "application/pdf" if path.suffix == ".pdf" else "image/png"
+
+    # ── Execution ─────────────────────────────────────────────────────────────
     if not settings.get("config_name"):
         st.info("Select a configuration in the sidebar to continue.")
         return
@@ -390,23 +518,16 @@ def render_validation_tab(settings: dict) -> None:
     validate_btn = st.button(
         "Run Validation",
         type="primary",
-        disabled=not (doc_a_file and doc_b_file and settings.get("config_name")),
-        use_container_width=False,
+        disabled=not (a_bytes and b_bytes and settings.get("config_name")),
     )
 
-    if validate_btn and doc_a_file and doc_b_file:
-        endpoint = (
-            "/validate/gt"
-            if output_format == "M2 Ground Truth Format"
-            else "/validate"
-        )
+    if validate_btn:
+        endpoint = "/validate/gt" if output_format == "M2 Ground Truth Format" else "/validate"
 
-        with st.spinner(
-            "Validating document pair… this may take 60-180 seconds"
-        ):
+        with st.spinner("Validating document pair… this may take 60-180 seconds"):
             files = {
-                "doc_a": (doc_a_file.name, doc_a_file.getvalue(), doc_a_file.type),
-                "doc_b": (doc_b_file.name, doc_b_file.getvalue(), doc_b_file.type),
+                "doc_a": (a_name, a_bytes, a_type),
+                "doc_b": (b_name, b_bytes, b_type),
             }
             data = {
                 "config_name": settings["config_name"],
@@ -444,7 +565,9 @@ def _render_validation_result(result: dict) -> None:
     col3.metric("Mismatches", mismatches)
     col4.metric("Review Req.", summary.get("review_required", 0))
     col5.metric("Tokens (I/O)", f"{summary.get('input_tokens', 0)} / {summary.get('output_tokens', 0)}")
-    col6.metric("Cost", f"${summary.get('total_cost', 0):.5f}")
+    
+    cost_inr = summary.get('total_cost', 0) * INR_CONVERSION_RATE
+    col6.metric("Cost", f"₹{cost_inr:.5f}")
 
     # Match rate gauge
     st.progress(match_rate, text=f"Overall Match Rate: {match_rate:.1%}")
@@ -2736,7 +2859,7 @@ def main() -> None:
         "🔍 Extract Entities",
         "⚖️ Validate Pair",
         "🛠️ Config Builder",
-        "🔧 Fine-Tune Entities",   # ← NEW
+        "🔧 Fine-Tune Entities",
         "📊 Manual Validation",
         "🔌 API Explorer",
     ])
@@ -2748,7 +2871,7 @@ def main() -> None:
     with tab3:
         render_config_builder_tab()
     with tab4:
-        render_finetune_tab()          # ← NEW
+        render_finetune_tab()
     with tab5:
         render_manual_validation_tab()
     with tab6:
