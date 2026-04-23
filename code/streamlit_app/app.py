@@ -287,7 +287,7 @@ def render_extraction_tab(settings: dict) -> None:
     render_sample_docs_notice()
 
     # ── Sample Selection Logic ────────────────────────────────────────────────
-    sample_files = _get_files_from_folder("document_a")
+    sample_files = _get_files_from_folder("samples/document_a")
     selected_sample = None
     
     if sample_files:
@@ -302,7 +302,7 @@ def render_extraction_tab(settings: dict) -> None:
         )
         
         if selected_sample_name != "None":
-            selected_sample = Path("document_a") / selected_sample_name
+            selected_sample = Path("samples/document_a") / selected_sample_name
             if col2.button("👁️ Preview File", use_container_width=True):
                 # Modal/Popup-like experience using an expander
                 with st.expander(f"Preview: {selected_sample_name}", expanded=True):
@@ -457,11 +457,11 @@ def render_validation_tab(settings: dict) -> None:
 
     # ── Document A Section ────────────────────────────────────────────────────
     with st.expander("📄 Select Document A (Sample or Upload)", expanded=True):
-        files_a = _get_files_from_folder("document_a")
+        files_a = _get_files_from_folder("samples/document_a")
         sel_a = st.selectbox("Sample Doc A", ["None"] + [f.name for f in files_a], key="sel_a")
         
         if sel_a != "None" and st.button("👁️ Preview Doc A", key="prev_a"):
-            _show_file_preview(Path("document_a") / sel_a)
+            _show_file_preview(Path("samples/document_a") / sel_a)
 
         doc_a_file = st.file_uploader(
             "Or Upload Document A",
@@ -473,11 +473,11 @@ def render_validation_tab(settings: dict) -> None:
 
     # ── Document B Section ────────────────────────────────────────────────────
     with st.expander("📄 Select Document B (Sample or Upload)", expanded=True):
-        files_b = _get_files_from_folder("document_b")
+        files_b = _get_files_from_folder("samples/document_b")
         sel_b = st.selectbox("Sample Doc B", ["None"] + [f.name for f in files_b], key="sel_b")
         
         if sel_b != "None" and st.button("👁️ Preview Doc B", key="prev_b"):
-            _show_file_preview(Path("document_b") / sel_b)
+            _show_file_preview(Path("samples/document_b") / sel_b)
 
         doc_b_file = st.file_uploader(
             "Or Upload Document B",
@@ -492,7 +492,7 @@ def render_validation_tab(settings: dict) -> None:
     if doc_a_file:
         a_bytes, a_name, a_type = doc_a_file.getvalue(), doc_a_file.name, doc_a_file.type
     elif sel_a != "None":
-        path = Path("document_a") / sel_a
+        path = Path("samples/document_a") / sel_a
         with open(path, "rb") as f:
             a_bytes, a_name, a_type = f.read(), path.name, "application/pdf" if path.suffix == ".pdf" else "image/png"
 
@@ -500,7 +500,7 @@ def render_validation_tab(settings: dict) -> None:
     if doc_b_file:
         b_bytes, b_name, b_type = doc_b_file.getvalue(), doc_b_file.name, doc_b_file.type
     elif sel_b != "None":
-        path = Path("document_b") / sel_b
+        path = Path("samples/document_b") / sel_b
         with open(path, "rb") as f:
             b_bytes, b_name, b_type = f.read(), path.name, "application/pdf" if path.suffix == ".pdf" else "image/png"
 
